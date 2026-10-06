@@ -20,6 +20,8 @@ import {
   broadcastRsvpEvent,
   subscribeToRsvpEvents,
   fetchServerRsvps,
+  fetchServerSites,
+  saveServerSites,
 } from './utils/rsvpService';
 
 const STORAGE_KEY_SITES = 'blessed_sites_v2';
@@ -213,23 +215,34 @@ export default function App() {
     }
   }, [rsvpToast]);
 
-  // Real-time cross-tab & server synchronization
+  // Real-time cross-device server & tab synchronization
   useEffect(() => {
-    // 1. Cross-tab BroadcastChannel listener
+    // 1. Cross-device SSE & BroadcastChannel listener
     const unsubscribeBroadcast = subscribeToRsvpEvents((payload) => {
       if (payload.type === 'NEW_RSVP' && payload.rsvp) {
         const incoming = payload.rsvp;
-        setSites((prevSites) =>
-          prevSites.map((site) =>
-            site.id === payload.siteId
-              ? {
+        setSites((prevSites) => {
+          const hasTarget = prevSites.some((s) => s.id === payload.siteId);
+          return prevSites.map((site) => {
+            const isMatch = site.id === payload.siteId || (!hasTarget && site.id === prevSites[0]?.id);
+            if (isMatch) {
+              const alreadyExists = site.rsvps.some((r) => r.id === incoming.id);
+              if (alreadyExists) {
+                return {
                   ...site,
-                  rsvps: [incoming, ...site.rsvps.filter((r) => r.id !== incoming.id)],
-                }
-              : site
-          )
-        );
+                  rsvps: site.rsvps.map((r) => (r.id === incoming.id ? incoming : r)),
+                };
+              }
+              return {
+                ...site,
+                rsvps: [incoming, ...site.rsvps],
+              };
+            }
+            return site;
+          });
+        });
 
+        // Trigger live toast alert for host / admin
         setRsvpToast({
           id: incoming.id,
           name: incoming.name,
@@ -240,7 +253,7 @@ export default function App() {
       } else if (payload.type === 'DELETE_RSVP' && payload.rsvpId) {
         setSites((prevSites) =>
           prevSites.map((site) =>
-            site.id === payload.siteId
+            !payload.siteId || site.id === payload.siteId
               ? {
                   ...site,
                   rsvps: site.rsvps.filter((r) => r.id !== payload.rsvpId),
@@ -259,10 +272,21 @@ export default function App() {
               : site
           )
         );
+      } else if (payload.type === 'SITES_UPDATED' && payload.sites) {
+        const incomingSites = payload.sites;
+        setSites((prevSites) => {
+          // Merge preserving any active local changes
+          const map = new Map<string, PublicSite>();
+          incomingSites.forEach((s) => map.set(s.id, s));
+          prevSites.forEach((s) => {
+            if (!map.has(s.id)) map.set(s.id, s);
+          });
+          return Array.from(map.values());
+        });
       }
     });
 
-    // 2. Storage event listener (multi-tab sync)
+    // 2. Storage event listener (multi-tab sync within same browser)
     const handleStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY_SITES && e.newValue) {
         try {
@@ -275,27 +299,23 @@ export default function App() {
     };
     window.addEventListener('storage', handleStorage);
 
-    // 3. Initial server sync if available
-    fetchServerRsvps().then((serverItems) => {
-      if (serverItems && serverItems.length > 0) {
+    // 3. Initial database fetch from server (Loads cross-device state!)
+    fetchServerSites().then((serverSites) => {
+      if (serverSites && serverSites.length > 0) {
         setSites((prevSites) => {
-          let updatedAny = false;
-          const merged = prevSites.map((site) => {
-            const matches = serverItems.filter((i) => i.siteId === site.id);
-            if (matches.length > 0) {
-              const existingIds = new Set(site.rsvps.map((r) => r.id));
-              const newItems = matches.filter((m) => !existingIds.has(m.id));
-              if (newItems.length > 0) {
-                updatedAny = true;
-                return {
-                  ...site,
-                  rsvps: [...newItems, ...site.rsvps],
-                };
-              }
-            }
-            return site;
+          // Keep newer RSVPs by merging
+          const merged = serverSites.map((sSite) => {
+            const pSite = prevSites.find((p) => p.id === sSite.id);
+            if (!pSite) return sSite;
+            const rsvpMap = new Map<string, GuestRsvp>();
+            sSite.rsvps.forEach((r) => rsvpMap.set(r.id, r));
+            pSite.rsvps.forEach((r) => rsvpMap.set(r.id, r));
+            return {
+              ...sSite,
+              rsvps: Array.from(rsvpMap.values()),
+            };
           });
-          return updatedAny ? merged : prevSites;
+          return merged;
         });
       }
     });
@@ -305,6 +325,14 @@ export default function App() {
       window.removeEventListener('storage', handleStorage);
     };
   }, []);
+
+  // Debounced server backup of sites and photos
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      saveServerSites(sites);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [sites]);
 
   // Update active site data from Builder
   const handleUpdateActiveSiteData = (updatedData: InvitationData) => {

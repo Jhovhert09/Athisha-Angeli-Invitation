@@ -1,0 +1,187 @@
+[
+  {
+    "id": "site_liam_1",
+    "slug": "liam-alexander",
+    "title": "Liam Alexander's Holy Baptism & 1st Birthday",
+    "isPublished": true,
+    "publishedAt": "Oct 5, 2026",
+    "createdAt": "Oct 1, 2026",
+    "viewCount": 142,
+    "allowGuestRsvp": true,
+    "data": {
+      "babyName": "Liam Alexander",
+      "babyNickname": "Liam",
+      "gender": "boy",
+      "babyPhotoUrl": "/src/assets/images/baby_baptism_portrait_1791254793568.jpg",
+      "coverKicker": "YOU ARE INVITED",
+      "milestoneTitle": "Holy Baptism & 1st Birthday",
+      "introHeading": "With grateful hearts and immense joy,",
+      "introText": "We invite you to celebrate a very special milestone in our little one’s life as he is welcomed into God’s family and turns one year old.",
+      "baptismDate": "Sunday, December 13, 2026",
+      "baptismTime": "10:00 AM",
+      "baptismChurch": "St. Joseph Parish Church",
+      "baptismAddress": "MacArthur Highway, Urdaneta City, Pangasinan",
+      "baptismMapsUrl": "https://maps.google.com/?q=St.+Joseph+Parish+Church+Urdaneta+City",
+      "baptismNotes": "The Sacred Rite begins promptly. Please be seated in prayer by 9:45 AM.",
+      "birthdayDate": "Sunday, December 13, 2026",
+      "birthdayTime": "12:00 PM",
+      "birthdayVenue": "The Garden Events Place",
+      "birthdayAddress": "Poblacion, Urdaneta City, Pangasinan",
+      "birthdayMapsUrl": "https://maps.google.com/?q=The+Garden+Events+Place+Urdaneta+City",
+      "birthdayNotes": "A feast of thanksgiving, sweet cake cutting, joyful laughter, and celebration!",
+      "countdownTarget": "2026-12-13T10:00:00",
+      "fatherName": "Juan Santos",
+      "motherName": "Elena Cruz-Santos",
+      "parentsMessage": "Together with our families, we warmly invite you to share in this blessed and joyful celebration.",
+      "godparentsHeading": "Godparents",
+      "godparentsSubheading": "Those who will help guide our little one with faith, love, and kindness.",
+      "godparents": [
+        {
+          "id": "1",
+          "name": "Maria Santos",
+          "role": "Godmother",
+          "relationship": "Aunt"
+        },
+        {
+          "id": "2",
+          "name": "Juan Dela Cruz",
+          "role": "Godfather",
+          "relationship": "Uncle"
+        },
+        {
+          "id": "3",
+          "name": "Dr. Sofia Morales",
+          "role": "Godmother",
+          "relationship": "Family Friend"
+        },
+        {
+          "id": "4",
+          "name": "Engr. Rafael Reyes",
+          "role": "Godfather",
+          "relationship": "Family Friend"
+        },
+        {
+          "id": "5",
+          "name": "Beatrice Villanueva",
+          "role": "Godmother",
+          "relationship": "Godmother"
+        },
+        {
+          "id": "6",
+          "name": "Gabriel Mendoza",
+          "role": "Godfather",
+          "relationship": "Godfather"
+        }
+      ],
+      "verseText": "“Let the little children come to me, and do not hinder them, for the kingdom of heaven belongs to such as these.”",
+      "verseCitation": "Matthew 19:14",
+      "birthdayHeading": "Let's Celebrate!",
+      "birthdaySubheading": "Our little blessing is turning ONE! 🎂",
+      "galleryTitle": "One Year of Love",
+      "gallerySubtitle": "Memories of a wonderful first year filled with milestones, smiles, and grace.",
+      "photos": [
+        {
+          "id": "photo-1",
+          "url": "/src/assets/images/baby_baptism_portrait_1791254793568.jpg",
+          "caption": "Blessings & White Heirloom Christening Outfit",
+          "ageMonth": "Month 11"
+        },
+        {
+          "id": "photo-2",
+          "url": "/src/assets/images/baby_sleeping_angel_1791254831082.jpg",
+          "caption": "Our peaceful little angel dreaming sweet dreams",
+          "ageMonth": "Newborn"
+        },
+        {
+          "id": "photo-3",
+          "url": "/src/assets/images/baby_teddy_memory_1791254818642.jpg",
+          "caption": "Playful giggles with teddy bear companion",
+          "ageMonth": "Month 8"
+        },
+        {
+          "id": "photo-4",
+          "url": "/src/assets/images/baptism_cake_gold_1791254806162.jpg",
+          "caption": "Golden leaf 1st celebration cake & white flowers",
+          "ageMonth": "Year 1"
+        }
+      ],
+      "timelineItems": [
+        {
+          "id": "time-1",
+          "time": "10:00 AM",
+          "title": "Holy Sacrament of Baptism",
+          "subtitle": "St. Joseph Parish Church",
+          "icon": "cross"
+        },
+        {
+          "id": "time-2",
+          "time": "11:30 AM",
+          "title": "Family & Godparent Portraits",
+          "subtitle": "Church Courtyard & Altar steps",
+          "icon": "camera"
+        },
+        {
+          "id": "time-3",
+          "time": "12:00 PM",
+          "title": "Welcome to Reception",
+          "subtitle": "The Garden Events Place Grand Hall",
+          "icon": "heart"
+        },
+        {
+          "id": "time-4",
+          "time": "12:30 PM",
+          "title": "Thanksgiving Luncheon & Program",
+          "subtitle": "Buffet feast, toasts & milestones slideshow",
+          "icon": "utensils"
+        },
+        {
+          "id": "time-5",
+          "time": "1:30 PM",
+          "title": "Cake Blowing & 1st Birthday Games",
+          "subtitle": "Balloons, sweet treats & party favors",
+          "icon": "cake"
+        }
+      ],
+      "rsvpDeadline": "Please confirm your attendance by Sunday, November 30, 2026",
+      "rsvpNote": "Your presence would make this special day even more meaningful to our family.",
+      "contactNumber": "+63 917 123 4567",
+      "closingHeading": "Thank You",
+      "closingMessage": "Thank you for being part of our little one’s journey and for celebrating this sacred and joyous milestone with us.",
+      "closingSignature": "With love, Juan & Elena",
+      "templateId": "heavenly-blessings",
+      "frameShape": "arch",
+      "fontHeading": "cormorant",
+      "fontScript": "vibes",
+      "fontBody": "montserrat",
+      "primaryColor": "#FFFDF8",
+      "secondaryColor": "#EBF1F6",
+      "accentColor": "#C9A96A",
+      "backgroundColor": "#FAF7F2",
+      "cardBgColor": "#FFFFFF",
+      "textColor": "#2E353C",
+      "subtextColor": "#667482",
+      "showFloatingPetals": true,
+      "showSparkles": true,
+      "musicEnabled": true,
+      "musicTheme": "lullaby-harp"
+    },
+    "rsvps": [
+      {
+        "id": "rsvp_sample_1",
+        "name": "Maria Santos",
+        "attending": true,
+        "guestCount": 1,
+        "message": "So honored to be Godmother to baby Liam! May God shower his life with endless blessings.",
+        "submittedAt": "Oct 4, 2026"
+      },
+      {
+        "id": "rsvp_sample_2",
+        "name": "Engr. Rafael Reyes",
+        "attending": true,
+        "guestCount": 1,
+        "message": "Can’t wait to celebrate Liam’s first milestone and sacrament with the family!",
+        "submittedAt": "Oct 5, 2026"
+      }
+    ]
+  }
+]
