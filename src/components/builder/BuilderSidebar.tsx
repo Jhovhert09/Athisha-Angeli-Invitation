@@ -33,6 +33,7 @@ import {
   Search,
   ExternalLink,
   Phone,
+  RefreshCw,
 } from 'lucide-react';
 
 interface BuilderSidebarProps {
@@ -43,6 +44,9 @@ interface BuilderSidebarProps {
   onClearRsvps: () => void;
   onOpenAllRsvpsModal?: () => void;
   onDeleteSingleRsvp?: (rsvpId: string) => void;
+  onRefreshRsvps?: () => Promise<void> | void;
+  isSyncingRsvps?: boolean;
+  lastSyncTime?: Date | null;
 }
 
 type TabType = 'invitation' | 'design' | 'family' | 'gallery' | 'rsvps';
@@ -55,6 +59,9 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
   onClearRsvps,
   onOpenAllRsvpsModal,
   onDeleteSingleRsvp,
+  onRefreshRsvps,
+  isSyncingRsvps = false,
+  lastSyncTime,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('invitation');
   const [rsvpStatusFilter, setRsvpStatusFilter] = useState<'all' | 'attending' | 'declined'>('all');
@@ -250,11 +257,11 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
         </button>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="grid grid-cols-5 p-1 bg-stone-100 border-b border-stone-200 text-xs">
+      {/* Navigation Tabs - Responsive on mobile screens and desktop */}
+      <div className="flex items-center overflow-x-auto no-scrollbar sm:grid sm:grid-cols-5 p-1 bg-stone-100 border-b border-stone-200 text-xs">
         <button
           onClick={() => setActiveTab('invitation')}
-          className={`py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 ${
+          className={`flex-1 sm:flex-none min-w-[62px] py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 cursor-pointer ${
             activeTab === 'invitation'
               ? 'bg-white text-stone-900 shadow-xs'
               : 'text-stone-500 hover:text-stone-900'
@@ -266,7 +273,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
 
         <button
           onClick={() => setActiveTab('design')}
-          className={`py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 ${
+          className={`flex-1 sm:flex-none min-w-[62px] py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 cursor-pointer ${
             activeTab === 'design'
               ? 'bg-white text-stone-900 shadow-xs'
               : 'text-stone-500 hover:text-stone-900'
@@ -278,7 +285,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
 
         <button
           onClick={() => setActiveTab('family')}
-          className={`py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 ${
+          className={`flex-1 sm:flex-none min-w-[62px] py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 cursor-pointer ${
             activeTab === 'family'
               ? 'bg-white text-stone-900 shadow-xs'
               : 'text-stone-500 hover:text-stone-900'
@@ -290,7 +297,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
 
         <button
           onClick={() => setActiveTab('gallery')}
-          className={`py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 ${
+          className={`flex-1 sm:flex-none min-w-[62px] py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 cursor-pointer ${
             activeTab === 'gallery'
               ? 'bg-white text-stone-900 shadow-xs'
               : 'text-stone-500 hover:text-stone-900'
@@ -302,14 +309,20 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
 
         <button
           onClick={() => setActiveTab('rsvps')}
-          className={`py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 relative ${
+          className={`flex-1 sm:flex-none min-w-[68px] py-2 px-1 text-center font-medium rounded-lg transition-all flex flex-col items-center gap-1 relative cursor-pointer ${
             activeTab === 'rsvps'
-              ? 'bg-white text-stone-900 shadow-xs'
+              ? 'bg-white text-stone-900 shadow-xs ring-1 ring-emerald-500/30'
               : 'text-stone-500 hover:text-stone-900'
           }`}
         >
-          <Heart className="w-4 h-4" />
-          <span className="text-[10px]">RSVP ({guestRsvps.length})</span>
+          <div className="relative">
+            <Heart className={`w-4 h-4 ${guestRsvps.length > 0 ? 'text-rose-500 fill-rose-500/20' : ''}`} />
+            <span className="absolute -top-1 -right-1 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          </div>
+          <span className="text-[10px] font-semibold">RSVP ({guestRsvps.length})</span>
         </button>
       </div>
 
@@ -1036,58 +1049,96 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
         {/* ========================================================================= */}
         {activeTab === 'rsvps' && (
           <div className="space-y-4">
-            {/* RSVP Stats */}
+            {/* Real-time Live Sync Status Banner */}
+            <div className="p-3 bg-emerald-50/90 rounded-2xl border border-emerald-200/90 flex items-center justify-between shadow-2xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-bold text-emerald-950 uppercase tracking-wider">
+                      Live Sync Active
+                    </span>
+                    <span className="text-[10px] bg-emerald-200/60 text-emerald-800 font-semibold px-1.5 py-0.2 rounded-full">
+                      Cross-Device
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-emerald-700 truncate">
+                    Listening for guest submissions from all browsers
+                  </p>
+                </div>
+              </div>
+
+              {/* Refresh / Sync Now Button */}
+              <button
+                type="button"
+                onClick={onRefreshRsvps}
+                disabled={isSyncingRsvps}
+                className="px-2.5 py-1 text-[11px] font-semibold text-emerald-900 bg-white hover:bg-emerald-100/70 border border-emerald-200 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0 disabled:opacity-50"
+                title="Click to check database for latest guest submissions"
+              >
+                <RefreshCw className={`w-3 h-3 text-emerald-700 ${isSyncingRsvps ? 'animate-spin' : ''}`} />
+                <span className="hidden xs:inline">Sync Now</span>
+              </button>
+            </div>
+
+            {/* RSVP Stats: Responses, Attending, Declined */}
             <div className="grid grid-cols-3 gap-2">
               <div
                 onClick={() => setRsvpStatusFilter('all')}
-                className={`p-3 rounded-2xl border text-center cursor-pointer transition-all ${
+                className={`p-2.5 sm:p-3 rounded-2xl border text-center cursor-pointer transition-all ${
                   rsvpStatusFilter === 'all'
-                    ? 'bg-stone-100 border-stone-400 ring-2 ring-stone-300'
+                    ? 'bg-stone-100 border-stone-400 ring-2 ring-stone-300 shadow-xs'
                     : 'bg-stone-50 border-stone-200 hover:bg-stone-100/60'
                 }`}
+                title="Click to show all guest responses"
               >
-                <span className="text-[10px] uppercase font-bold text-stone-400 block">
+                <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">
                   Responses
                 </span>
-                <span className="text-xl font-bold text-stone-900 font-cormorant">
+                <span className="text-xl sm:text-2xl font-bold text-stone-900 font-cormorant leading-tight">
                   {guestRsvps.length}
                 </span>
               </div>
 
               <div
                 onClick={() => setRsvpStatusFilter('attending')}
-                className={`p-3 rounded-2xl border text-center cursor-pointer transition-all ${
+                className={`p-2.5 sm:p-3 rounded-2xl border text-center cursor-pointer transition-all ${
                   rsvpStatusFilter === 'attending'
-                    ? 'bg-emerald-100/80 border-emerald-400 ring-2 ring-emerald-300'
+                    ? 'bg-emerald-100/80 border-emerald-400 ring-2 ring-emerald-300 shadow-xs'
                     : 'bg-emerald-50/70 border-emerald-200 hover:bg-emerald-100/50'
                 }`}
+                title="Click to show attending guests only"
               >
-                <span className="text-[10px] uppercase font-bold text-emerald-800 block">
+                <span className="text-[10px] uppercase font-bold text-emerald-800 block tracking-wider">
                   Attending
                 </span>
-                <span className="text-xl font-bold text-emerald-950 font-cormorant">
+                <span className="text-xl sm:text-2xl font-bold text-emerald-950 font-cormorant leading-tight">
                   {attendingCount}
                 </span>
-                <span className="text-[9px] text-emerald-700 block mt-0.5 font-medium">
+                <span className="text-[9px] text-emerald-700 block font-medium truncate">
                   {totalHeadcount} {totalHeadcount === 1 ? 'seat' : 'seats'}
                 </span>
               </div>
 
               <div
                 onClick={() => setRsvpStatusFilter('declined')}
-                className={`p-3 rounded-2xl border text-center cursor-pointer transition-all ${
+                className={`p-2.5 sm:p-3 rounded-2xl border text-center cursor-pointer transition-all ${
                   rsvpStatusFilter === 'declined'
-                    ? 'bg-rose-100/80 border-rose-400 ring-2 ring-rose-300'
+                    ? 'bg-rose-100/80 border-rose-400 ring-2 ring-rose-300 shadow-xs'
                     : 'bg-stone-100/70 border-stone-200 hover:bg-stone-200/50'
                 }`}
+                title="Click to show guests who declined"
               >
-                <span className="text-[10px] uppercase font-bold text-stone-600 block">
+                <span className="text-[10px] uppercase font-bold text-stone-600 block tracking-wider">
                   Declined
                 </span>
-                <span className="text-xl font-bold text-stone-800 font-cormorant">
+                <span className="text-xl sm:text-2xl font-bold text-stone-800 font-cormorant leading-tight">
                   {declinedCount}
                 </span>
-                <span className="text-[9px] text-stone-500 block mt-0.5 font-medium">
+                <span className="text-[9px] text-stone-500 block font-medium truncate">
                   regrets
                 </span>
               </div>
@@ -1100,7 +1151,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setRsvpStatusFilter('all')}
-                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
                     rsvpStatusFilter === 'all'
                       ? 'bg-white text-stone-900 shadow-xs'
                       : 'text-stone-500 hover:text-stone-800'
@@ -1111,25 +1162,25 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setRsvpStatusFilter('attending')}
-                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1 ${
+                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                     rsvpStatusFilter === 'attending'
                       ? 'bg-white text-emerald-800 shadow-xs'
                       : 'text-stone-500 hover:text-emerald-700'
                   }`}
                 >
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
                   <span>Attending ({attendingCount})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setRsvpStatusFilter('declined')}
-                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1 ${
+                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                     rsvpStatusFilter === 'declined'
                       ? 'bg-white text-stone-800 shadow-xs'
                       : 'text-stone-500 hover:text-stone-800'
                   }`}
                 >
-                  <XCircle className="w-3 h-3 text-stone-400" />
+                  <XCircle className="w-3 h-3 text-stone-400 shrink-0" />
                   <span>Declined ({declinedCount})</span>
                 </button>
               </div>
@@ -1142,8 +1193,17 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                   placeholder="Filter by guest name or message..."
                   value={rsvpSearchQuery}
                   onChange={(e) => setRsvpSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-800 placeholder:text-stone-400"
+                  className="w-full pl-8 pr-8 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-800 placeholder:text-stone-400"
                 />
+                {rsvpSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setRsvpSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5 cursor-pointer"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1160,7 +1220,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                 <button
                   type="button"
                   onClick={onOpenAllRsvpsModal}
-                  className="text-[10px] text-amber-800 hover:text-amber-950 font-semibold flex items-center gap-1 underline"
+                  className="text-[10px] text-amber-800 hover:text-amber-950 font-semibold flex items-center gap-1 underline cursor-pointer"
                 >
                   <span>Open Full Dashboard</span>
                   <ExternalLink className="w-2.5 h-2.5" />
@@ -1175,34 +1235,34 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                   <Heart className="w-6 h-6 text-stone-300 mx-auto mb-2" />
                   <p className="text-xs font-semibold text-stone-700">
                     {guestRsvps.length === 0
-                      ? 'No RSVPs yet'
+                      ? 'No RSVPs recorded yet'
                       : 'No responses match this filter'}
                   </p>
-                  <p className="text-[11px] text-stone-400 mt-0.5">
+                  <p className="text-[11px] text-stone-400 mt-1 max-w-xs mx-auto">
                     {guestRsvps.length === 0
-                      ? 'Share your published link or test RSVP in preview to see responses here.'
-                      : 'Try switching the filter tabs or clearing your search.'}
+                      ? 'When a guest accepts or declines the invitation on any device, their response will appear here live!'
+                      : 'Try clearing your search query or switching to the "All" tab above.'}
                   </p>
                 </div>
               ) : (
                 displayedRsvps.map((rsvp) => (
                   <div
                     key={rsvp.id}
-                    className={`p-3 rounded-2xl border space-y-2 transition-all ${
+                    className={`p-3 rounded-2xl border space-y-2 transition-all duration-300 ${
                       rsvp.attending
-                        ? 'bg-emerald-50/40 border-emerald-200/80 hover:border-emerald-300'
-                        : 'bg-stone-50 border-stone-200 hover:border-stone-300'
+                        ? 'bg-emerald-50/40 border-emerald-200/80 hover:border-emerald-300 hover:bg-emerald-50/60 shadow-2xs'
+                        : 'bg-stone-50 border-stone-200 hover:border-stone-300 hover:bg-stone-100/50 shadow-2xs'
                     }`}
                   >
                     {/* Header: Name, Badge, Delete */}
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs font-bold text-stone-900 truncate">
                             {rsvp.name}
                           </span>
                           <span
-                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
                               rsvp.attending
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-stone-200 text-stone-600'
@@ -1210,7 +1270,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                           >
                             {rsvp.attending ? (
                               <>
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
                                 <span>Attending</span>
                                 {rsvp.guestCount > 1 && (
                                   <span className="ml-0.5 font-normal">
@@ -1220,7 +1280,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                               </>
                             ) : (
                               <>
-                                <XCircle className="w-3 h-3 text-stone-400" />
+                                <XCircle className="w-3 h-3 text-stone-400 shrink-0" />
                                 <span>Declined</span>
                               </>
                             )}
@@ -1228,7 +1288,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                         </div>
 
                         {/* Extra metadata */}
-                        <div className="flex items-center gap-2 text-[10px] text-stone-400 mt-0.5">
+                        <div className="flex items-center gap-2 text-[10px] text-stone-400 mt-0.5 flex-wrap">
                           <span>{rsvp.submittedAt}</span>
                           {rsvp.attending && (
                             <>
@@ -1269,7 +1329,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
 
                     {/* Blessing message */}
                     {rsvp.message && (
-                      <p className="text-[11px] italic text-stone-600 bg-white p-2 rounded-xl border border-stone-100 shadow-2xs leading-relaxed">
+                      <p className="text-[11px] italic text-stone-600 bg-white p-2.5 rounded-xl border border-stone-100 shadow-2xs leading-relaxed">
                         &ldquo;{rsvp.message}&rdquo;
                       </p>
                     )}
@@ -1278,7 +1338,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
               )}
             </div>
 
-            {/* Actions: Export & Reset */}
+            {/* Actions: Export CSV & Reset */}
             <div className="pt-2 flex items-center gap-2 border-t border-stone-100">
               <button
                 type="button"
@@ -1293,7 +1353,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                 <button
                   type="button"
                   onClick={onClearRsvps}
-                  className="p-2 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 border border-stone-200 cursor-pointer"
+                  className="p-2 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 border border-stone-200 cursor-pointer transition-colors"
                   title="Clear all responses"
                 >
                   <Trash2 className="w-4 h-4" />

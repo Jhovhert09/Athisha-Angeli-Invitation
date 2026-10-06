@@ -7,11 +7,12 @@
 import { GuestRsvp, PublicSite } from '../types/invitation';
 
 export interface RsvpEventPayload {
-  type: 'NEW_RSVP' | 'DELETE_RSVP' | 'CLEAR_RSVPS' | 'SITES_UPDATED';
+  type: 'NEW_RSVP' | 'DELETE_RSVP' | 'CLEAR_RSVPS' | 'SITES_UPDATED' | 'SYNC_ALL_RSVPS';
   siteId: string;
   rsvp?: GuestRsvp;
   rsvpId?: string;
   sites?: PublicSite[];
+  allRsvps?: Array<{ siteId: string } & GuestRsvp>;
   timestamp: number;
 }
 
@@ -154,9 +155,10 @@ export function subscribeToRsvpEvents(
 
   connectSSE();
 
-  // 3. Robust background poll: Checks server for new RSVPs every 3.5 seconds
+  // 3. Robust background poll: Checks server for new RSVPs every 2.5 seconds
   // Ensures updates appear even if SSE connection drops or is throttled by mobile sleep
   let lastKnownRsvpIds = new Set<string>();
+  let lastKnownRsvpsJson = '';
 
   const pollServer = async () => {
     if (isCleanedUp) return;
@@ -165,14 +167,13 @@ export function subscribeToRsvpEvents(
       if (res.ok) {
         const items = await res.json();
         if (Array.isArray(items)) {
-          // If first poll, record current IDs
-          if (lastKnownRsvpIds.size === 0 && items.length > 0) {
-            lastKnownRsvpIds = new Set(items.map((i: any) => i.id));
-          } else {
-            // Check for new RSVPs not yet received
+          const currentJson = JSON.stringify(items);
+          if (currentJson !== lastKnownRsvpsJson) {
+            lastKnownRsvpsJson = currentJson;
+
+            // Detect newly added items
             for (const item of items) {
-              if (!lastKnownRsvpIds.has(item.id)) {
-                lastKnownRsvpIds.add(item.id);
+              if (lastKnownRsvpIds.size > 0 && !lastKnownRsvpIds.has(item.id)) {
                 const { siteId, ...rsvp } = item;
                 onEvent({
                   type: 'NEW_RSVP',
@@ -182,6 +183,15 @@ export function subscribeToRsvpEvents(
                 });
               }
             }
+
+            // Sync the full list
+            lastKnownRsvpIds = new Set(items.map((i: any) => i.id));
+            onEvent({
+              type: 'SYNC_ALL_RSVPS',
+              siteId: '',
+              allRsvps: items,
+              timestamp: Date.now(),
+            });
           }
         }
       }
@@ -190,11 +200,11 @@ export function subscribeToRsvpEvents(
     }
 
     if (!isCleanedUp) {
-      pollTimer = setTimeout(pollServer, 3500);
+      pollTimer = setTimeout(pollServer, 2500);
     }
   };
 
-  pollTimer = setTimeout(pollServer, 2000);
+  pollTimer = setTimeout(pollServer, 1000);
 
   // Return cleanup function
   return () => {

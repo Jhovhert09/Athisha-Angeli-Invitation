@@ -207,6 +207,25 @@ export default function App() {
     message?: string;
   } | null>(null);
 
+  // Manual sync state
+  const [isSyncingRsvps, setIsSyncingRsvps] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+
+  const handleManualRefreshRsvps = async () => {
+    setIsSyncingRsvps(true);
+    try {
+      const serverSites = await fetchServerSites();
+      if (serverSites && serverSites.length > 0) {
+        setSites(serverSites);
+      }
+      setLastSyncTime(new Date());
+    } catch {
+      // Ignore
+    } finally {
+      setTimeout(() => setIsSyncingRsvps(false), 500);
+    }
+  };
+
   // Auto-dismiss live RSVP toast
   useEffect(() => {
     if (rsvpToast) {
@@ -283,6 +302,28 @@ export default function App() {
           });
           return Array.from(map.values());
         });
+      } else if (payload.type === 'SYNC_ALL_RSVPS' && payload.allRsvps) {
+        const allItems = payload.allRsvps;
+        setSites((prevSites) => {
+          return prevSites.map((site) => {
+            const matches = allItems.filter((item: { siteId: string } & GuestRsvp) => item.siteId === site.id);
+            const relevantItems = matches.length > 0 ? matches : (prevSites.length === 1 ? allItems : []);
+            if (relevantItems.length > 0 || site.rsvps.length > 0) {
+              const rsvpsOnly: GuestRsvp[] = relevantItems.map((item: { siteId: string } & GuestRsvp) => {
+                const { siteId: _, ...r } = item;
+                return r;
+              });
+              if (JSON.stringify(rsvpsOnly) !== JSON.stringify(site.rsvps)) {
+                return {
+                  ...site,
+                  rsvps: rsvpsOnly,
+                };
+              }
+            }
+            return site;
+          });
+        });
+        setLastSyncTime(new Date());
       }
     });
 
@@ -706,11 +747,12 @@ export default function App() {
           {/* Admin All RSVPs Button with detailed attending and declined counts */}
           <button
             onClick={() => setIsAdminRsvpModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 transition-colors cursor-pointer"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-xs font-semibold rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 transition-colors cursor-pointer shrink-0"
             title={`View RSVPs: ${totalAllAttendingCount} Attending (${totalAllHeadcount} seats), ${totalAllDeclinedCount} Declined`}
           >
-            <Heart className="w-3.5 h-3.5 fill-rose-500/20 text-rose-600" />
-            <span>RSVPs ({totalAllRsvpsCount})</span>
+            <Heart className="w-3.5 h-3.5 fill-rose-500/20 text-rose-600 shrink-0" />
+            <span className="hidden sm:inline">RSVPs ({totalAllRsvpsCount})</span>
+            <span className="sm:hidden font-bold">({totalAllRsvpsCount})</span>
             <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md font-bold" title="Attending guests">
               ✓ {totalAllAttendingCount}
             </span>
@@ -786,6 +828,9 @@ export default function App() {
             onClearRsvps={handleClearActiveSiteRsvps}
             onOpenAllRsvpsModal={() => setIsAdminRsvpModalOpen(true)}
             onDeleteSingleRsvp={(rsvpId) => handleDeleteRsvpFromSite(activeSite.id, rsvpId)}
+            onRefreshRsvps={handleManualRefreshRsvps}
+            isSyncingRsvps={isSyncingRsvps}
+            lastSyncTime={lastSyncTime}
           />
         </aside>
 
