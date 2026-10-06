@@ -25,6 +25,8 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
 }) => {
   const [attending, setAttending] = useState(attendingInitial);
   const [name, setName] = useState(existingRsvp?.name || '');
+  const [emailOrPhone, setEmailOrPhone] = useState(existingRsvp?.emailOrPhone || '');
+  const [guestCount, setGuestCount] = useState<number>(existingRsvp?.guestCount || 1);
   const [message, setMessage] = useState(existingRsvp?.message || '');
   const [submitted, setSubmitted] = useState(false);
 
@@ -41,8 +43,9 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
     const newRsvp: GuestRsvp = {
       id: existingRsvp?.id || 'rsvp_' + Date.now(),
       name: name.trim(),
+      emailOrPhone: emailOrPhone.trim() || undefined,
       attending,
-      guestCount: attending ? 1 : 0,
+      guestCount: attending ? Math.max(1, guestCount) : 0,
       message: message.trim(),
       submittedAt: new Date().toLocaleDateString('en-US', {
         month: 'short',
@@ -131,7 +134,7 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
               {/* Full Name */}
               <div>
                 <label className="block text-xs font-medium text-stone-700 mb-1">
-                  Your Name <span className="text-amber-700">*</span>
+                  Your Full Name <span className="text-amber-700">*</span>
                 </label>
                 <input
                   type="text"
@@ -143,6 +146,41 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
                 />
               </div>
 
+              {/* Guest Count (if attending) */}
+              {attending && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-stone-700 mb-1">
+                      Number of Guests
+                    </label>
+                    <select
+                      value={guestCount}
+                      onChange={(e) => setGuestCount(Number(e.target.value))}
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-stone-800"
+                    >
+                      <option value={1}>1 person (Just me)</option>
+                      <option value={2}>2 persons (+1 guest)</option>
+                      <option value={3}>3 persons (+2 family)</option>
+                      <option value={4}>4 persons (Family group)</option>
+                      <option value={5}>5+ persons</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-stone-700 mb-1">
+                      Phone / Mobile <span className="text-stone-400 font-normal">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={emailOrPhone}
+                      onChange={(e) => setEmailOrPhone(e.target.value)}
+                      placeholder="+63 9..."
+                      className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-stone-800 placeholder:text-stone-400"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Message */}
               <div>
                 <label className="block text-xs font-medium text-stone-700 mb-1">
@@ -152,7 +190,11 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
                   rows={2}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Warm wishes for baby and parents..."
+                  placeholder={
+                    attending
+                      ? "Warm wishes for Liam and parents..."
+                      : "Send warm regrets and loving prayers..."
+                  }
                   className="w-full px-4 py-2 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-600 transition-all text-stone-800 placeholder:text-stone-400 resize-none"
                 />
               </div>

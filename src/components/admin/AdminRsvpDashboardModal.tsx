@@ -308,6 +308,9 @@ export const AdminRsvpDashboardModal: React.FC<AdminRsvpDashboardModalProps> = (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                         <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                         <span>Attending</span>
+                        {item.rsvp.guestCount > 1 && (
+                          <span className="font-medium ml-0.5">(+{item.rsvp.guestCount - 1} guests)</span>
+                        )}
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-stone-200 text-stone-600">
@@ -321,6 +324,15 @@ export const AdminRsvpDashboardModal: React.FC<AdminRsvpDashboardModalProps> = (
                     <span className="text-[11px] text-stone-400 font-mono">
                       {item.rsvp.submittedAt}
                     </span>
+
+                    {item.rsvp.emailOrPhone && (
+                      <>
+                        <span className="text-stone-300 text-xs">•</span>
+                        <span className="text-[11px] text-stone-500 font-mono">
+                          {item.rsvp.emailOrPhone}
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   {/* Public Site Source Badge */}

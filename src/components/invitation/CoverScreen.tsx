@@ -8,19 +8,23 @@ import {
   GoldSparkleIcon,
   FloralDivider,
 } from '../common/DecorativeIcons';
-import { ChevronDown, Sparkles } from 'lucide-react';
+import { ChevronDown, Sparkles, Camera } from 'lucide-react';
+import { PhotoReplaceModal } from '../common/PhotoReplaceModal';
 
 interface CoverScreenProps {
   data: InvitationData;
   onOpen: () => void;
   isOpen: boolean;
+  onReplaceBabyPhoto?: (newUrl: string) => void;
 }
 
 export const CoverScreen: React.FC<CoverScreenProps> = ({
   data,
   onOpen,
   isOpen,
+  onReplaceBabyPhoto,
 }) => {
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = React.useState(false);
   const fontHeadingClass =
     data.fontHeading === 'playfair' ? 'font-playfair' : 'font-cormorant';
   const fontScriptClass =
@@ -84,7 +88,7 @@ export const CoverScreen: React.FC<CoverScreenProps> = ({
       {/* Center Section: Baby Photo + Name + Milestones */}
       <div className="relative z-10 flex flex-col items-center my-auto py-2">
         {/* Baby Photo in Template-defined Frame */}
-        <div className="mb-4 transform transition-transform duration-500 hover:scale-[1.02]">
+        <div className="relative mb-4 transform transition-transform duration-500 hover:scale-[1.02]">
           <DecorativeFrame
             photoUrl={data.babyPhotoUrl}
             altText={data.babyName}
@@ -92,7 +96,55 @@ export const CoverScreen: React.FC<CoverScreenProps> = ({
             accentColor={data.accentColor}
             size="md"
           />
+
+          {onReplaceBabyPhoto && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsPhotoModalOpen(true);
+              }}
+              className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-stone-900/90 hover:bg-stone-900 text-white shadow-lg text-[10px] font-semibold flex items-center gap-1.5 backdrop-blur-xs transition-all hover:scale-105 active:scale-95 cursor-pointer z-30 border border-white/20"
+              title="Upload & Replace Baby Portrait Photo"
+            >
+              <Camera className="w-3 h-3 text-amber-300" />
+              <span>Replace Photo</span>
+            </button>
+          )}
         </div>
+
+        {/* Modal for uploading/replacing cover baby photo */}
+        {onReplaceBabyPhoto && (
+          <PhotoReplaceModal
+            isOpen={isPhotoModalOpen}
+            onClose={() => setIsPhotoModalOpen(false)}
+            currentUrl={data.babyPhotoUrl}
+            onPhotoChange={(newUrl) => {
+              onReplaceBabyPhoto(newUrl);
+            }}
+            title="Replace Baby Portrait Photo"
+            description="Upload and replace the main cover & christening hero portrait"
+            accentColor={data.accentColor}
+            presets={[
+              {
+                label: 'Baptism Christening Outfit',
+                url: '/src/assets/images/baby_baptism_portrait_1791254793568.jpg',
+              },
+              {
+                label: 'Sleeping Angel',
+                url: '/src/assets/images/baby_sleeping_angel_1791254831082.jpg',
+              },
+              {
+                label: 'Joyful 1-Year Teddy Memory',
+                url: '/src/assets/images/baby_teddy_memory_1791254818642.jpg',
+              },
+              {
+                label: 'Golden Cake Celebration',
+                url: '/src/assets/images/baptism_cake_gold_1791254806162.jpg',
+              },
+            ]}
+          />
+        )}
 
         {/* Baby's Name (Most visually important text) */}
         <h1

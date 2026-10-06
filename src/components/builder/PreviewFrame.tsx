@@ -11,6 +11,7 @@ interface PreviewFrameProps {
   onAddRsvp: (rsvp: GuestRsvp) => void;
   isGuestMode: boolean;
   onToggleGuestMode: () => void;
+  onUpdateData?: (updated: InvitationData) => void;
 }
 
 export const PreviewFrame: React.FC<PreviewFrameProps> = ({
@@ -19,6 +20,7 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
   onAddRsvp,
   isGuestMode,
   onToggleGuestMode,
+  onUpdateData,
 }) => {
   const [deviceMode, setDeviceMode] = useState<'mobile' | 'desktop'>('mobile');
   const [isCoverOpen, setIsCoverOpen] = useState(false);
@@ -32,6 +34,44 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
 
   const handleResetCover = () => {
     setIsCoverOpen(false);
+  };
+
+  const handleReplaceBabyPhoto = (newUrl: string) => {
+    if (onUpdateData) {
+      onUpdateData({
+        ...data,
+        babyPhotoUrl: newUrl,
+      });
+    }
+  };
+
+  const handleReplaceGalleryPhoto = (index: number, newUrl: string) => {
+    if (onUpdateData) {
+      const updatedPhotos = [...data.photos];
+      updatedPhotos[index] = {
+        ...updatedPhotos[index],
+        url: newUrl,
+      };
+      onUpdateData({
+        ...data,
+        photos: updatedPhotos,
+      });
+    }
+  };
+
+  const handleAddGalleryPhoto = (newUrl: string) => {
+    if (onUpdateData) {
+      const newPhoto = {
+        id: 'photo_' + Date.now(),
+        url: newUrl,
+        caption: `Milestone Memory #${data.photos.length + 1}`,
+        ageMonth: `Month ${data.photos.length + 1}`,
+      };
+      onUpdateData({
+        ...data,
+        photos: [...data.photos, newPhoto],
+      });
+    }
   };
 
   // Builder Studio Preview Viewport
@@ -99,24 +139,40 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
 
             {/* Invitation scrollable screen */}
             <div className="w-full flex-1 overflow-y-auto relative pt-4 bg-[#FFFDF8]">
-              <CoverScreen data={data} isOpen={isCoverOpen} onOpen={handleOpenCover} />
+              <CoverScreen
+                data={data}
+                isOpen={isCoverOpen}
+                onOpen={handleOpenCover}
+                onReplaceBabyPhoto={onUpdateData ? handleReplaceBabyPhoto : undefined}
+              />
               <InvitationView
                 data={data}
                 onResetCover={handleResetCover}
                 guestRsvps={guestRsvps}
                 onAddRsvp={onAddRsvp}
+                onReplaceBabyPhoto={onUpdateData ? handleReplaceBabyPhoto : undefined}
+                onReplaceGalleryPhoto={onUpdateData ? handleReplaceGalleryPhoto : undefined}
+                onAddGalleryPhoto={onUpdateData ? handleAddGalleryPhoto : undefined}
               />
             </div>
           </div>
         ) : (
           /* Desktop Centered Container (420px card on elegant canvas as required by spec) */
           <div className="w-full max-w-[440px] bg-white rounded-3xl shadow-xl border border-stone-200 overflow-hidden relative min-h-[700px] my-auto transition-all">
-            <CoverScreen data={data} isOpen={isCoverOpen} onOpen={handleOpenCover} />
+            <CoverScreen
+              data={data}
+              isOpen={isCoverOpen}
+              onOpen={handleOpenCover}
+              onReplaceBabyPhoto={onUpdateData ? handleReplaceBabyPhoto : undefined}
+            />
             <InvitationView
               data={data}
               onResetCover={handleResetCover}
               guestRsvps={guestRsvps}
               onAddRsvp={onAddRsvp}
+              onReplaceBabyPhoto={onUpdateData ? handleReplaceBabyPhoto : undefined}
+              onReplaceGalleryPhoto={onUpdateData ? handleReplaceGalleryPhoto : undefined}
+              onAddGalleryPhoto={onUpdateData ? handleAddGalleryPhoto : undefined}
             />
           </div>
         )}

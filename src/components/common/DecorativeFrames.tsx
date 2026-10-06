@@ -21,6 +21,10 @@ export const DecorativeFrame: React.FC<DecorativeFrameProps> = ({
 }) => {
   const [hasError, setHasError] = React.useState(false);
 
+  React.useEffect(() => {
+    setHasError(false);
+  }, [photoUrl]);
+
   // Dimension classes based on size
   const sizeClasses = {
     sm: 'w-24 h-32',

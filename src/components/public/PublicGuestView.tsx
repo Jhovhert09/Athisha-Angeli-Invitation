@@ -4,7 +4,9 @@ import { CoverScreen } from '../invitation/CoverScreen';
 import { InvitationView } from '../invitation/InvitationView';
 import { invitationAudio } from '../../utils/audioPlayer';
 import { SacredCrossIcon, GoldSparkleIcon } from '../common/DecorativeIcons';
-import { Edit3, ExternalLink, ShieldCheck, LogOut } from 'lucide-react';
+import { Edit3, ExternalLink, ShieldCheck, LogOut, Heart, Users } from 'lucide-react';
+import { AdminRsvpDashboardModal } from '../admin/AdminRsvpDashboardModal';
+import { PublicSite } from '../../types/invitation';
 
 interface PublicGuestViewProps {
   data: InvitationData;
@@ -17,6 +19,9 @@ interface PublicGuestViewProps {
   passwordProtected?: boolean;
   sitePassword?: string;
   siteTitle?: string;
+  onUpdateData?: (updated: InvitationData) => void;
+  allSites?: PublicSite[];
+  onDeleteRsvp?: (rsvpId: string) => void;
 }
 
 export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
@@ -30,11 +35,18 @@ export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
   passwordProtected = false,
   sitePassword,
   siteTitle,
+  onUpdateData,
+  allSites,
+  onDeleteRsvp,
 }) => {
   const [isCoverOpen, setIsCoverOpen] = useState(false);
   const [unlocked, setUnlocked] = useState(!passwordProtected);
   const [enteredPassword, setEnteredPassword] = useState('');
   const [passwordError, setPasswordError] = useState(false);
+  const [isRsvpDashboardOpen, setIsRsvpDashboardOpen] = useState(false);
+
+  const attendingCount = guestRsvps.filter((r) => r.attending).length;
+  const declinedCount = guestRsvps.filter((r) => !r.attending).length;
 
   const handleOpenCover = () => {
     setIsCoverOpen(true);
@@ -45,6 +57,44 @@ export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
 
   const handleResetCover = () => {
     setIsCoverOpen(false);
+  };
+
+  const handleReplaceBabyPhoto = (newUrl: string) => {
+    if (onUpdateData) {
+      onUpdateData({
+        ...data,
+        babyPhotoUrl: newUrl,
+      });
+    }
+  };
+
+  const handleReplaceGalleryPhoto = (index: number, newUrl: string) => {
+    if (onUpdateData) {
+      const updatedPhotos = [...data.photos];
+      updatedPhotos[index] = {
+        ...updatedPhotos[index],
+        url: newUrl,
+      };
+      onUpdateData({
+        ...data,
+        photos: updatedPhotos,
+      });
+    }
+  };
+
+  const handleAddGalleryPhoto = (newUrl: string) => {
+    if (onUpdateData) {
+      const newPhoto = {
+        id: 'photo_' + Date.now(),
+        url: newUrl,
+        caption: `Milestone Memory #${data.photos.length + 1}`,
+        ageMonth: `Month ${data.photos.length + 1}`,
+      };
+      onUpdateData({
+        ...data,
+        photos: [...data.photos, newPhoto],
+      });
+    }
   };
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
@@ -74,13 +124,25 @@ export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
             <span className="text-stone-400 hidden sm:inline">· Viewing Public Guest Invitation</span>
           </div>
           <div className="flex items-center gap-2">
+            {/* Quick RSVP Status Button for Host */}
+            <button
+              onClick={() => setIsRsvpDashboardOpen(true)}
+              className="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white font-medium text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              title="Click to view full guest attendance list"
+            >
+              <Heart className="w-3.5 h-3.5 text-rose-300 fill-rose-300/30" />
+              <span>RSVPs ({guestRsvps.length}):</span>
+              <span className="text-emerald-300 font-bold">✓ {attendingCount} Attending</span>
+              <span className="text-stone-300 font-bold">✗ {declinedCount} Declined</span>
+            </button>
+
             {onOpenBuilder && (
               <button
                 onClick={onOpenBuilder}
                 className="px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white font-medium text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
               >
                 <Edit3 className="w-3.5 h-3.5" />
-                <span>Return to Admin Studio</span>
+                <span className="hidden sm:inline">Studio</span>
               </button>
             )}
             {onLogout && (
@@ -225,6 +287,7 @@ export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
               data={data}
               isOpen={isCoverOpen}
               onOpen={handleOpenCover}
+              onReplaceBabyPhoto={isAdminLoggedIn && onUpdateData ? handleReplaceBabyPhoto : undefined}
             />
 
             {/* Main Sacred & Joyful Invitation Content */}
@@ -234,6 +297,9 @@ export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
                 onResetCover={handleResetCover}
                 guestRsvps={guestRsvps}
                 onAddRsvp={onAddRsvp}
+                onReplaceBabyPhoto={isAdminLoggedIn && onUpdateData ? handleReplaceBabyPhoto : undefined}
+                onReplaceGalleryPhoto={isAdminLoggedIn && onUpdateData ? handleReplaceGalleryPhoto : undefined}
+                onAddGalleryPhoto={isAdminLoggedIn && onUpdateData ? handleAddGalleryPhoto : undefined}
               />
             </div>
           </>
@@ -263,6 +329,34 @@ export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Host Mode RSVP Dashboard Modal */}
+      {isAdminLoggedIn && isRsvpDashboardOpen && (
+        <AdminRsvpDashboardModal
+          isOpen={isRsvpDashboardOpen}
+          onClose={() => setIsRsvpDashboardOpen(false)}
+          sites={
+            allSites && allSites.length > 0
+              ? allSites
+              : [
+                  {
+                    id: 'guest_current_site',
+                    slug: '',
+                    title: siteTitle || `${data.babyName}'s Holy Baptism & 1st Birthday`,
+                    isPublished,
+                    createdAt: '',
+                    viewCount: 0,
+                    allowGuestRsvp: true,
+                    data,
+                    rsvps: guestRsvps,
+                  },
+                ]
+          }
+          activeSiteId={allSites && allSites.length > 0 ? allSites[0].id : 'guest_current_site'}
+          onDeleteRsvp={(_, rsvpId) => onDeleteRsvp?.(rsvpId)}
+          onClearSiteRsvps={() => {}}
+        />
+      )}
     </div>
   );
 };

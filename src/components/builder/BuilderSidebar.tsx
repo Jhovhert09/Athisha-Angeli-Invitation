@@ -10,6 +10,7 @@ import {
   GuestRsvp,
 } from '../../types/invitation';
 import { TEMPLATES } from '../../utils/templates';
+import { PhotoUploader } from '../common/PhotoUploader';
 import {
   Sparkles,
   Palette,
@@ -25,6 +26,13 @@ import {
   Music,
   Download,
   Share2,
+  Upload,
+  RotateCcw,
+  CheckCircle2,
+  XCircle,
+  Search,
+  ExternalLink,
+  Phone,
 } from 'lucide-react';
 
 interface BuilderSidebarProps {
@@ -33,6 +41,8 @@ interface BuilderSidebarProps {
   guestRsvps: GuestRsvp[];
   onOpenShare: () => void;
   onClearRsvps: () => void;
+  onOpenAllRsvpsModal?: () => void;
+  onDeleteSingleRsvp?: (rsvpId: string) => void;
 }
 
 type TabType = 'invitation' | 'design' | 'family' | 'gallery' | 'rsvps';
@@ -43,8 +53,12 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
   guestRsvps,
   onOpenShare,
   onClearRsvps,
+  onOpenAllRsvpsModal,
+  onDeleteSingleRsvp,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('invitation');
+  const [rsvpStatusFilter, setRsvpStatusFilter] = useState<'all' | 'attending' | 'declined'>('all');
+  const [rsvpSearchQuery, setRsvpSearchQuery] = useState('');
 
   // Update helper
   const updateField = <K extends keyof InvitationData>(field: K, value: InvitationData[K]) => {
@@ -112,6 +126,68 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
     );
   };
 
+  // Replace a specific gallery photo
+  const handleReplaceGalleryPhoto = (index: number, newUrl: string) => {
+    const updated = [...data.photos];
+    updated[index] = {
+      ...updated[index],
+      url: newUrl,
+    };
+    updateField('photos', updated);
+  };
+
+  // Add a new gallery photo
+  const handleAddGalleryPhoto = (newUrl: string) => {
+    const newPhoto = {
+      id: 'photo_' + Date.now(),
+      url: newUrl,
+      caption: `Milestone Memory #${data.photos.length + 1}`,
+      ageMonth: `Month ${data.photos.length + 1}`,
+    };
+    updateField('photos', [...data.photos, newPhoto]);
+  };
+
+  // Remove a gallery photo
+  const handleRemoveGalleryPhoto = (index: number) => {
+    if (data.photos.length <= 1) {
+      alert('Please keep at least one milestone memory photo in the gallery.');
+      return;
+    }
+    const updated = data.photos.filter((_, i) => i !== index);
+    updateField('photos', updated);
+  };
+
+  // Restore sample gallery photos
+  const handleResetSamplePhotos = () => {
+    const samples = [
+      {
+        id: 'photo-1',
+        url: '/src/assets/images/baby_baptism_portrait_1791254793568.jpg',
+        caption: 'Blessings & White Heirloom Christening Outfit',
+        ageMonth: 'Month 11',
+      },
+      {
+        id: 'photo-2',
+        url: '/src/assets/images/baby_sleeping_angel_1791254831082.jpg',
+        caption: 'Our peaceful little angel dreaming sweet dreams',
+        ageMonth: 'Newborn',
+      },
+      {
+        id: 'photo-3',
+        url: '/src/assets/images/baby_teddy_memory_1791254818642.jpg',
+        caption: 'Playful giggles with teddy bear companion',
+        ageMonth: 'Month 8',
+      },
+      {
+        id: 'photo-4',
+        url: '/src/assets/images/baptism_cake_gold_1791254806162.jpg',
+        caption: 'Golden leaf 1st celebration cake & white flowers',
+        ageMonth: 'Year 1',
+      },
+    ];
+    updateField('photos', samples);
+  };
+
   // Export RSVPs to CSV
   const handleExportRsvps = () => {
     if (guestRsvps.length === 0) return;
@@ -134,7 +210,23 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
     document.body.removeChild(link);
   };
 
-  const attendingCount = guestRsvps.filter((r) => r.attending).length;
+  const attendingRsvps = guestRsvps.filter((r) => r.attending);
+  const declinedRsvps = guestRsvps.filter((r) => !r.attending);
+  const attendingCount = attendingRsvps.length;
+  const declinedCount = declinedRsvps.length;
+  const totalHeadcount = attendingRsvps.reduce((sum, r) => sum + (r.guestCount || 1), 0);
+
+  const displayedRsvps = guestRsvps.filter((rsvp) => {
+    if (rsvpStatusFilter === 'attending' && !rsvp.attending) return false;
+    if (rsvpStatusFilter === 'declined' && rsvp.attending) return false;
+    if (rsvpSearchQuery.trim()) {
+      const q = rsvpSearchQuery.toLowerCase().trim();
+      const matchName = rsvp.name.toLowerCase().includes(q);
+      const matchMsg = (rsvp.message || '').toLowerCase().includes(q);
+      if (!matchName && !matchMsg) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="w-full h-full flex flex-col bg-white border-r border-stone-200 font-montserrat select-none">
@@ -274,38 +366,17 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                 </div>
               </div>
 
-              {/* Photo Selector */}
-              <div>
-                <label className="block text-xs font-medium text-stone-700 mb-1">
-                  Baby Portrait Photo
-                </label>
-                <div className="grid grid-cols-4 gap-2 mb-2">
-                  {photoPresets.map((p, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => updateField('babyPhotoUrl', p.url)}
-                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${
-                        data.babyPhotoUrl === p.url
-                          ? 'border-amber-600 ring-2 ring-amber-500/30'
-                          : 'border-transparent opacity-70 hover:opacity-100'
-                      }`}
-                    >
-                      <img src={p.url} alt={p.label} className="w-full h-full object-cover" />
-                      {data.babyPhotoUrl === p.url && (
-                        <div className="absolute inset-0 bg-amber-600/30 flex items-center justify-center">
-                          <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="text"
-                  value={data.babyPhotoUrl}
-                  onChange={(e) => updateField('babyPhotoUrl', e.target.value)}
-                  placeholder="Or enter custom image URL"
-                  className="w-full px-3 py-1.5 text-[11px] border border-stone-200 rounded-lg text-stone-600"
+              {/* Baby Portrait Photo Uploader */}
+              <div className="pt-1">
+                <PhotoUploader
+                  label="Baby Portrait Photo"
+                  description="Cover Screen & Sacred Invitation Hero"
+                  currentUrl={data.babyPhotoUrl}
+                  onPhotoChange={(url) => updateField('babyPhotoUrl', url)}
+                  accentColor={data.accentColor}
+                  showPresets={true}
+                  presets={photoPresets}
+                  aspectRatio="portrait"
                 />
               </div>
 
@@ -792,41 +863,117 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
           <div className="space-y-5">
             {/* Gallery Photos */}
             <div className="space-y-3">
-              <h3 className="text-xs font-bold tracking-wider uppercase text-stone-400">
-                Photo Scrapbook ({data.photos.length})
-              </h3>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold tracking-wider uppercase text-stone-400">
+                    Photo Scrapbook ({data.photos.length})
+                  </h3>
+                  <span className="text-[10px] text-stone-500">
+                    Milestone memories &amp; baby journey
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleResetSamplePhotos}
+                  className="text-[10px] text-stone-400 hover:text-stone-700 flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Reset to sample christening photos"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset Samples</span>
+                </button>
+              </div>
 
-              <div className="space-y-2.5">
+              {/* Upload New Photo Card */}
+              <div className="p-3 bg-amber-50/40 rounded-2xl border border-amber-200/70 space-y-2">
+                <span className="text-[11px] font-bold text-amber-900 block flex items-center gap-1.5">
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add New Milestone Memory</span>
+                </span>
+                <PhotoUploader
+                  currentUrl=""
+                  onPhotoChange={(newUrl) => handleAddGalleryPhoto(newUrl)}
+                  label=""
+                  description="Upload a photo from your computer or phone to add to the gallery"
+                  accentColor={data.accentColor}
+                  aspectRatio="square"
+                  showPresets={true}
+                  presets={photoPresets}
+                />
+              </div>
+
+              {/* List of Existing Photos with Replace Photo Button */}
+              <div className="space-y-3 pt-1">
+                <span className="text-[11px] font-semibold text-stone-700 block">
+                  Current Gallery Photos ({data.photos.length})
+                </span>
+
                 {data.photos.map((photo, idx) => (
                   <div
-                    key={photo.id}
-                    className="p-3 bg-stone-50 rounded-xl border border-stone-200 flex items-center gap-3"
+                    key={photo.id || idx}
+                    className="p-3 bg-stone-50 rounded-2xl border border-stone-200 space-y-2.5 transition-all hover:border-stone-300"
                   >
-                    <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-stone-200">
-                      <img src={photo.url} alt="" className="w-full h-full object-cover" />
+                    {/* Header bar with photo number and delete */}
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-stone-700">
+                        Photo #{idx + 1}
+                      </span>
+                      {data.photos.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveGalleryPhoto(idx)}
+                          className="p-1 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Delete this photo from gallery"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
-                    <div className="flex-1 space-y-1">
-                      <input
-                        type="text"
-                        value={photo.caption}
-                        onChange={(e) => {
-                          const updated = [...data.photos];
-                          updated[idx].caption = e.target.value;
-                          updateField('photos', updated);
-                        }}
-                        className="w-full px-2 py-1 text-xs bg-white border border-stone-200 rounded-lg"
-                      />
-                      <input
-                        type="text"
-                        value={photo.ageMonth || ''}
-                        placeholder="Tag (e.g. Month 8)"
-                        onChange={(e) => {
-                          const updated = [...data.photos];
-                          updated[idx].ageMonth = e.target.value;
-                          updateField('photos', updated);
-                        }}
-                        className="w-28 px-2 py-0.5 text-[10px] bg-white border border-stone-200 rounded-md"
-                      />
+
+                    {/* Photo Uploader / Replace Component */}
+                    <PhotoUploader
+                      compact
+                      currentUrl={photo.url}
+                      onPhotoChange={(newUrl) => handleReplaceGalleryPhoto(idx, newUrl)}
+                      accentColor={data.accentColor}
+                    />
+
+                    {/* Caption and Age Tag */}
+                    <div className="space-y-1.5 pt-1">
+                      <div>
+                        <label className="block text-[10px] font-medium text-stone-500 mb-0.5">
+                          Caption / Memory Note
+                        </label>
+                        <input
+                          type="text"
+                          value={photo.caption}
+                          placeholder="e.g. Joyful smiles with Godparents"
+                          onChange={(e) => {
+                            const updated = [...data.photos];
+                            updated[idx].caption = e.target.value;
+                            updateField('photos', updated);
+                          }}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <label className="block text-[10px] font-medium text-stone-500 mb-0.5">
+                            Milestone Tag
+                          </label>
+                          <input
+                            type="text"
+                            value={photo.ageMonth || ''}
+                            placeholder="e.g. Month 8, Baptism Day"
+                            onChange={(e) => {
+                              const updated = [...data.photos];
+                              updated[idx].ageMonth = e.target.value;
+                              updateField('photos', updated);
+                            }}
+                            className="w-full px-2.5 py-1 text-[11px] bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -888,98 +1035,269 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
         {/* TAB 5: GUEST RSVPS MANAGEMENT & STATS                                      */}
         {/* ========================================================================= */}
         {activeTab === 'rsvps' && (
-          <div className="space-y-5">
+          <div className="space-y-4">
             {/* RSVP Stats */}
             <div className="grid grid-cols-3 gap-2">
-              <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200 text-center">
-                <span className="text-[10px] uppercase font-semibold text-stone-400 block">
+              <div
+                onClick={() => setRsvpStatusFilter('all')}
+                className={`p-3 rounded-2xl border text-center cursor-pointer transition-all ${
+                  rsvpStatusFilter === 'all'
+                    ? 'bg-stone-100 border-stone-400 ring-2 ring-stone-300'
+                    : 'bg-stone-50 border-stone-200 hover:bg-stone-100/60'
+                }`}
+              >
+                <span className="text-[10px] uppercase font-bold text-stone-400 block">
                   Responses
                 </span>
                 <span className="text-xl font-bold text-stone-900 font-cormorant">
                   {guestRsvps.length}
                 </span>
               </div>
-              <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-200 text-center">
-                <span className="text-[10px] uppercase font-semibold text-emerald-700 block">
+
+              <div
+                onClick={() => setRsvpStatusFilter('attending')}
+                className={`p-3 rounded-2xl border text-center cursor-pointer transition-all ${
+                  rsvpStatusFilter === 'attending'
+                    ? 'bg-emerald-100/80 border-emerald-400 ring-2 ring-emerald-300'
+                    : 'bg-emerald-50/70 border-emerald-200 hover:bg-emerald-100/50'
+                }`}
+              >
+                <span className="text-[10px] uppercase font-bold text-emerald-800 block">
                   Attending
                 </span>
-                <span className="text-xl font-bold text-emerald-900 font-cormorant">
+                <span className="text-xl font-bold text-emerald-950 font-cormorant">
                   {attendingCount}
                 </span>
+                <span className="text-[9px] text-emerald-700 block mt-0.5 font-medium">
+                  {totalHeadcount} {totalHeadcount === 1 ? 'seat' : 'seats'}
+                </span>
               </div>
-              <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200 text-center">
-                <span className="text-[10px] uppercase font-semibold text-amber-700 block">
+
+              <div
+                onClick={() => setRsvpStatusFilter('declined')}
+                className={`p-3 rounded-2xl border text-center cursor-pointer transition-all ${
+                  rsvpStatusFilter === 'declined'
+                    ? 'bg-rose-100/80 border-rose-400 ring-2 ring-rose-300'
+                    : 'bg-stone-100/70 border-stone-200 hover:bg-stone-200/50'
+                }`}
+              >
+                <span className="text-[10px] uppercase font-bold text-stone-600 block">
                   Declined
                 </span>
-                <span className="text-xl font-bold text-amber-900 font-cormorant">
-                  {guestRsvps.filter((r) => !r.attending).length}
+                <span className="text-xl font-bold text-stone-800 font-cormorant">
+                  {declinedCount}
+                </span>
+                <span className="text-[9px] text-stone-500 block mt-0.5 font-medium">
+                  regrets
                 </span>
               </div>
             </div>
 
-            {/* Actions: Export & Reset */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleExportRsvps}
-                disabled={guestRsvps.length === 0}
-                className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-stone-800 disabled:opacity-40 text-white flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Export Guestlist CSV</span>
-              </button>
-              {guestRsvps.length > 0 && (
+            {/* Filter Tabs & Search */}
+            <div className="space-y-2 pt-1">
+              {/* Segmented Filter */}
+              <div className="flex items-center bg-stone-100 p-1 rounded-xl text-xs">
                 <button
                   type="button"
-                  onClick={onClearRsvps}
-                  className="p-2 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 border border-stone-200"
-                  title="Clear responses"
+                  onClick={() => setRsvpStatusFilter('all')}
+                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+                    rsvpStatusFilter === 'all'
+                      ? 'bg-white text-stone-900 shadow-xs'
+                      : 'text-stone-500 hover:text-stone-800'
+                  }`}
                 >
-                  <Trash2 className="w-4 h-4" />
+                  All ({guestRsvps.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRsvpStatusFilter('attending')}
+                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1 ${
+                    rsvpStatusFilter === 'attending'
+                      ? 'bg-white text-emerald-800 shadow-xs'
+                      : 'text-stone-500 hover:text-emerald-700'
+                  }`}
+                >
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>Attending ({attendingCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRsvpStatusFilter('declined')}
+                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1 ${
+                    rsvpStatusFilter === 'declined'
+                      ? 'bg-white text-stone-800 shadow-xs'
+                      : 'text-stone-500 hover:text-stone-800'
+                  }`}
+                >
+                  <XCircle className="w-3 h-3 text-stone-400" />
+                  <span>Declined ({declinedCount})</span>
+                </button>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Filter by guest name or message..."
+                  value={rsvpSearchQuery}
+                  onChange={(e) => setRsvpSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-none focus:ring-1 focus:ring-stone-400 text-stone-800 placeholder:text-stone-400"
+                />
+              </div>
+            </div>
+
+            {/* List Header */}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                {rsvpStatusFilter === 'attending'
+                  ? `Guests Attending (${displayedRsvps.length})`
+                  : rsvpStatusFilter === 'declined'
+                  ? `Guests Who Declined (${displayedRsvps.length})`
+                  : `All Guest Responses (${displayedRsvps.length})`}
+              </span>
+              {onOpenAllRsvpsModal && (
+                <button
+                  type="button"
+                  onClick={onOpenAllRsvpsModal}
+                  className="text-[10px] text-amber-800 hover:text-amber-950 font-semibold flex items-center gap-1 underline"
+                >
+                  <span>Open Full Dashboard</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
                 </button>
               )}
             </div>
 
-            {/* Guest list table */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold tracking-wider uppercase text-stone-400">
-                Confirmed Guests
-              </h4>
-
-              {guestRsvps.length === 0 ? (
+            {/* Guest list cards */}
+            <div className="space-y-2.5">
+              {displayedRsvps.length === 0 ? (
                 <div className="text-center py-8 px-4 bg-stone-50 rounded-2xl border border-dashed border-stone-200">
                   <Heart className="w-6 h-6 text-stone-300 mx-auto mb-2" />
-                  <p className="text-xs font-semibold text-stone-600">No RSVPs yet</p>
+                  <p className="text-xs font-semibold text-stone-700">
+                    {guestRsvps.length === 0
+                      ? 'No RSVPs yet'
+                      : 'No responses match this filter'}
+                  </p>
                   <p className="text-[11px] text-stone-400 mt-0.5">
-                    Test submitting an RSVP in the invitation preview to see it appear here!
+                    {guestRsvps.length === 0
+                      ? 'Share your published link or test RSVP in preview to see responses here.'
+                      : 'Try switching the filter tabs or clearing your search.'}
                   </p>
                 </div>
               ) : (
-                guestRsvps.map((rsvp) => (
+                displayedRsvps.map((rsvp) => (
                   <div
                     key={rsvp.id}
-                    className="p-3 bg-stone-50 rounded-2xl border border-stone-200 space-y-1.5"
+                    className={`p-3 rounded-2xl border space-y-2 transition-all ${
+                      rsvp.attending
+                        ? 'bg-emerald-50/40 border-emerald-200/80 hover:border-emerald-300'
+                        : 'bg-stone-50 border-stone-200 hover:border-stone-300'
+                    }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-stone-800">{rsvp.name}</span>
-                      <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          rsvp.attending
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-stone-200 text-stone-600'
-                        }`}
-                      >
-                        {rsvp.attending ? 'Attending' : 'Declined'}
-                      </span>
+                    {/* Header: Name, Badge, Delete */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-stone-900 truncate">
+                            {rsvp.name}
+                          </span>
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              rsvp.attending
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-stone-200 text-stone-600'
+                            }`}
+                          >
+                            {rsvp.attending ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>Attending</span>
+                                {rsvp.guestCount > 1 && (
+                                  <span className="ml-0.5 font-normal">
+                                    (+{rsvp.guestCount - 1})
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="w-3 h-3 text-stone-400" />
+                                <span>Declined</span>
+                              </>
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Extra metadata */}
+                        <div className="flex items-center gap-2 text-[10px] text-stone-400 mt-0.5">
+                          <span>{rsvp.submittedAt}</span>
+                          {rsvp.attending && (
+                            <>
+                              <span>•</span>
+                              <span className="font-medium text-emerald-700">
+                                {rsvp.guestCount || 1}{' '}
+                                {rsvp.guestCount === 1 ? 'seat reserved' : 'seats reserved'}
+                              </span>
+                            </>
+                          )}
+                          {rsvp.emailOrPhone && (
+                            <>
+                              <span>•</span>
+                              <span className="font-mono text-stone-500">
+                                {rsvp.emailOrPhone}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Delete action */}
+                      {onDeleteSingleRsvp && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete RSVP response for "${rsvp.name}"?`)) {
+                              onDeleteSingleRsvp(rsvp.id);
+                            }
+                          }}
+                          className="p-1 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          title="Delete response"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
 
+                    {/* Blessing message */}
                     {rsvp.message && (
-                      <p className="text-[11px] italic text-stone-600 bg-white p-2 rounded-xl border border-stone-100">
+                      <p className="text-[11px] italic text-stone-600 bg-white p-2 rounded-xl border border-stone-100 shadow-2xs leading-relaxed">
                         &ldquo;{rsvp.message}&rdquo;
                       </p>
                     )}
                   </div>
                 ))
+              )}
+            </div>
+
+            {/* Actions: Export & Reset */}
+            <div className="pt-2 flex items-center gap-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={handleExportRsvps}
+                disabled={guestRsvps.length === 0}
+                className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold bg-stone-900 hover:bg-stone-800 disabled:opacity-40 text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export CSV ({guestRsvps.length})</span>
+              </button>
+              {guestRsvps.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onClearRsvps}
+                  className="p-2 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 border border-stone-200 cursor-pointer"
+                  title="Clear all responses"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               )}
             </div>
           </div>

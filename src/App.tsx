@@ -15,7 +15,12 @@ import { AdminRsvpDashboardModal } from './components/admin/AdminRsvpDashboardMo
 import { AdminLoginModal } from './components/admin/AdminLoginModal';
 import { AdminSecurityModal } from './components/admin/AdminSecurityModal';
 import { SacredCrossIcon } from './components/common/DecorativeIcons';
-import { Eye, Edit3, Share2, Globe, Shield, CheckCircle2, AlertCircle, Heart, LogOut, Key } from 'lucide-react';
+import { Eye, Edit3, Share2, Globe, Shield, CheckCircle2, AlertCircle, Heart, LogOut, Key, Bell, XCircle, X } from 'lucide-react';
+import {
+  broadcastRsvpEvent,
+  subscribeToRsvpEvents,
+  fetchServerRsvps,
+} from './utils/rsvpService';
 
 const STORAGE_KEY_SITES = 'blessed_sites_v2';
 
@@ -168,11 +173,159 @@ export default function App() {
     [sites]
   );
 
+  const totalAllAttendingCount = useMemo(
+    () => sites.reduce((sum, s) => sum + s.rsvps.filter((r) => r.attending).length, 0),
+    [sites]
+  );
+
+  const totalAllDeclinedCount = useMemo(
+    () => sites.reduce((sum, s) => sum + s.rsvps.filter((r) => !r.attending).length, 0),
+    [sites]
+  );
+
+  const totalAllHeadcount = useMemo(
+    () =>
+      sites.reduce(
+        (sum, s) =>
+          sum +
+          s.rsvps
+            .filter((r) => r.attending)
+            .reduce((sub, r) => sub + (r.guestCount || 1), 0),
+        0
+      ),
+    [sites]
+  );
+
+  // Real-time toast notification state
+  const [rsvpToast, setRsvpToast] = useState<{
+    id: string;
+    name: string;
+    attending: boolean;
+    guestCount?: number;
+    message?: string;
+  } | null>(null);
+
+  // Auto-dismiss live RSVP toast
+  useEffect(() => {
+    if (rsvpToast) {
+      const timer = setTimeout(() => setRsvpToast(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [rsvpToast]);
+
+  // Real-time cross-tab & server synchronization
+  useEffect(() => {
+    // 1. Cross-tab BroadcastChannel listener
+    const unsubscribeBroadcast = subscribeToRsvpEvents((payload) => {
+      if (payload.type === 'NEW_RSVP' && payload.rsvp) {
+        const incoming = payload.rsvp;
+        setSites((prevSites) =>
+          prevSites.map((site) =>
+            site.id === payload.siteId
+              ? {
+                  ...site,
+                  rsvps: [incoming, ...site.rsvps.filter((r) => r.id !== incoming.id)],
+                }
+              : site
+          )
+        );
+
+        setRsvpToast({
+          id: incoming.id,
+          name: incoming.name,
+          attending: incoming.attending,
+          guestCount: incoming.guestCount,
+          message: incoming.message,
+        });
+      } else if (payload.type === 'DELETE_RSVP' && payload.rsvpId) {
+        setSites((prevSites) =>
+          prevSites.map((site) =>
+            site.id === payload.siteId
+              ? {
+                  ...site,
+                  rsvps: site.rsvps.filter((r) => r.id !== payload.rsvpId),
+                }
+              : site
+          )
+        );
+      } else if (payload.type === 'CLEAR_RSVPS') {
+        setSites((prevSites) =>
+          prevSites.map((site) =>
+            site.id === payload.siteId
+              ? {
+                  ...site,
+                  rsvps: [],
+                }
+              : site
+          )
+        );
+      }
+    });
+
+    // 2. Storage event listener (multi-tab sync)
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY_SITES && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSites(parsed);
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 3. Initial server sync if available
+    fetchServerRsvps().then((serverItems) => {
+      if (serverItems && serverItems.length > 0) {
+        setSites((prevSites) => {
+          let updatedAny = false;
+          const merged = prevSites.map((site) => {
+            const matches = serverItems.filter((i) => i.siteId === site.id);
+            if (matches.length > 0) {
+              const existingIds = new Set(site.rsvps.map((r) => r.id));
+              const newItems = matches.filter((m) => !existingIds.has(m.id));
+              if (newItems.length > 0) {
+                updatedAny = true;
+                return {
+                  ...site,
+                  rsvps: [...newItems, ...site.rsvps],
+                };
+              }
+            }
+            return site;
+          });
+          return updatedAny ? merged : prevSites;
+        });
+      }
+    });
+
+    return () => {
+      unsubscribeBroadcast();
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
   // Update active site data from Builder
   const handleUpdateActiveSiteData = (updatedData: InvitationData) => {
     setSites((prevSites) =>
       prevSites.map((site) =>
         site.id === activeSite.id
+          ? {
+              ...site,
+              title: `${updatedData.babyName}'s Holy Baptism & 1st Birthday`,
+              data: updatedData,
+            }
+          : site
+      )
+    );
+  };
+
+  // Update guest site data if modified by host in guest view
+  const handleUpdateGuestSiteData = (updatedData: InvitationData) => {
+    setSites((prevSites) =>
+      prevSites.map((site) =>
+        site.id === guestSite.id
           ? {
               ...site,
               title: `${updatedData.babyName}'s Holy Baptism & 1st Birthday`,
@@ -195,6 +348,23 @@ export default function App() {
           : site
       )
     );
+
+    // Broadcast in real-time to all open admin tabs and server
+    broadcastRsvpEvent({
+      type: 'NEW_RSVP',
+      siteId: guestSite.id,
+      rsvp: newRsvp,
+      timestamp: Date.now(),
+    });
+
+    // Also trigger toast in current session
+    setRsvpToast({
+      id: newRsvp.id,
+      name: newRsvp.name,
+      attending: newRsvp.attending,
+      guestCount: newRsvp.guestCount,
+      message: newRsvp.message,
+    });
   };
 
   // Clear RSVPs on active site
@@ -210,7 +380,32 @@ export default function App() {
             : site
         )
       );
+      broadcastRsvpEvent({
+        type: 'CLEAR_RSVPS',
+        siteId: activeSite.id,
+        timestamp: Date.now(),
+      });
     }
+  };
+
+  // Delete specific RSVP
+  const handleDeleteRsvpFromSite = (siteId: string, rsvpId: string) => {
+    setSites((prev) =>
+      prev.map((s) =>
+        s.id === siteId
+          ? {
+              ...s,
+              rsvps: s.rsvps.filter((r) => r.id !== rsvpId),
+            }
+          : s
+      )
+    );
+    broadcastRsvpEvent({
+      type: 'DELETE_RSVP',
+      siteId,
+      rsvpId,
+      timestamp: Date.now(),
+    });
   };
 
   // Admin: Create new site
@@ -249,19 +444,6 @@ export default function App() {
     }
   };
 
-  // Admin: Delete specific RSVP
-  const handleDeleteRsvpFromSite = (siteId: string, rsvpId: string) => {
-    setSites((prev) =>
-      prev.map((s) =>
-        s.id === siteId
-          ? {
-              ...s,
-              rsvps: s.rsvps.filter((r) => r.id !== rsvpId),
-            }
-          : s
-      )
-    );
-  };
 
   // Admin: Clear all RSVPs for specific site
   const handleClearSiteRsvps = (siteId: string) => {
@@ -306,7 +488,55 @@ export default function App() {
           passwordProtected={guestSite.passwordProtected}
           sitePassword={guestSite.password}
           siteTitle={guestSite.title}
+          onUpdateData={handleUpdateGuestSiteData}
+          allSites={sites}
+          onDeleteRsvp={(rsvpId) => handleDeleteRsvpFromSite(guestSite.id, rsvpId)}
         />
+
+        {/* Live Real-Time RSVP Toast Notification Banner */}
+        {rsvpToast && (
+          <div className="fixed bottom-5 right-5 z-50 max-w-sm bg-white rounded-2xl shadow-2xl border border-stone-200 p-4 animate-fade-in flex items-start gap-3">
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                rsvpToast.attending
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-stone-100 text-stone-600'
+              }`}
+            >
+              {rsvpToast.attending ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              ) : (
+                <XCircle className="w-5 h-5 text-stone-500" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0 font-montserrat">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                  {rsvpToast.attending ? 'NEW ATTENDANCE CONFIRMED!' : 'NEW RSVP RESPONSE'}
+                </span>
+                <button
+                  onClick={() => setRsvpToast(null)}
+                  className="text-stone-400 hover:text-stone-600 p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <h4 className="text-xs font-bold text-stone-900 truncate mt-0.5">
+                {rsvpToast.name} {rsvpToast.attending ? 'will attend' : 'cannot attend'}
+              </h4>
+              {rsvpToast.attending && rsvpToast.guestCount && rsvpToast.guestCount > 1 && (
+                <span className="text-[10px] text-emerald-700 font-semibold block">
+                  Reserved for {rsvpToast.guestCount} guests
+                </span>
+              )}
+              {rsvpToast.message && (
+                <p className="text-[11px] text-stone-500 italic truncate mt-0.5">
+                  &ldquo;{rsvpToast.message}&rdquo;
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Admin Login Modal (if host triggers login from public guest page) */}
         <AdminLoginModal
@@ -445,14 +675,20 @@ export default function App() {
 
         {/* Zone 3: Primary Actions */}
         <div className="flex items-center gap-2">
-          {/* Admin All RSVPs Button */}
+          {/* Admin All RSVPs Button with detailed attending and declined counts */}
           <button
             onClick={() => setIsAdminRsvpModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 transition-colors cursor-pointer"
-            title="View all guest RSVP responses across all public sites"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200 transition-colors cursor-pointer"
+            title={`View RSVPs: ${totalAllAttendingCount} Attending (${totalAllHeadcount} seats), ${totalAllDeclinedCount} Declined`}
           >
             <Heart className="w-3.5 h-3.5 fill-rose-500/20 text-rose-600" />
             <span>RSVPs ({totalAllRsvpsCount})</span>
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md font-bold" title="Attending guests">
+              ✓ {totalAllAttendingCount}
+            </span>
+            <span className="text-[10px] bg-stone-200 text-stone-600 px-1.5 py-0.5 rounded-md font-bold" title="Declined guests">
+              ✗ {totalAllDeclinedCount}
+            </span>
           </button>
 
           {/* Admin Sites Button */}
@@ -520,6 +756,8 @@ export default function App() {
             guestRsvps={activeSite.rsvps}
             onOpenShare={() => setIsShareModalOpen(true)}
             onClearRsvps={handleClearActiveSiteRsvps}
+            onOpenAllRsvpsModal={() => setIsAdminRsvpModalOpen(true)}
+            onDeleteSingleRsvp={(rsvpId) => handleDeleteRsvpFromSite(activeSite.id, rsvpId)}
           />
         </aside>
 
@@ -535,6 +773,7 @@ export default function App() {
             onAddRsvp={handleAddRsvpToGuestSite}
             isGuestMode={false}
             onToggleGuestMode={() => openGuestMode()}
+            onUpdateData={handleUpdateActiveSiteData}
           />
         </section>
       </main>

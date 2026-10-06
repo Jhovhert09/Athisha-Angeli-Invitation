@@ -27,13 +27,19 @@ import {
   Sparkles,
   ChevronRight,
   X,
+  Plus,
+  Upload,
 } from 'lucide-react';
+import { PhotoReplaceModal } from '../common/PhotoReplaceModal';
 
 interface InvitationViewProps {
   data: InvitationData;
   onResetCover?: () => void;
   guestRsvps: GuestRsvp[];
   onAddRsvp: (rsvp: GuestRsvp) => void;
+  onReplaceBabyPhoto?: (newUrl: string) => void;
+  onReplaceGalleryPhoto?: (index: number, newUrl: string) => void;
+  onAddGalleryPhoto?: (newUrl: string) => void;
 }
 
 export const InvitationView: React.FC<InvitationViewProps> = ({
@@ -41,6 +47,9 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
   onResetCover,
   guestRsvps,
   onAddRsvp,
+  onReplaceBabyPhoto,
+  onReplaceGalleryPhoto,
+  onAddGalleryPhoto,
 }) => {
   // Audio state
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -52,6 +61,11 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
 
   // Gallery Lightbox
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryPhoto | null>(null);
+
+  // Photo replacement modal states
+  const [isBabyPhotoModalOpen, setIsBabyPhotoModalOpen] = useState(false);
+  const [replaceGalleryIndex, setReplaceGalleryIndex] = useState<number | null>(null);
+  const [isAddGalleryModalOpen, setIsAddGalleryModalOpen] = useState(false);
 
   // Countdown timer state
   const [timeLeft, setTimeLeft] = useState<{
@@ -224,6 +238,18 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
               accentColor={data.accentColor}
               size="lg"
             />
+
+            {onReplaceBabyPhoto && (
+              <button
+                type="button"
+                onClick={() => setIsBabyPhotoModalOpen(true)}
+                className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-stone-900/90 hover:bg-stone-900 text-white shadow-lg text-[10px] font-semibold flex items-center gap-1.5 backdrop-blur-xs transition-all hover:scale-105 active:scale-95 cursor-pointer z-20 border border-white/20"
+                title="Upload & Replace Baby Portrait Photo"
+              >
+                <Camera className="w-3 h-3 text-amber-300" />
+                <span>Replace Photo</span>
+              </button>
+            )}
           </div>
 
           {/* Baby Nickname / Kicker */}
@@ -737,11 +763,11 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {data.photos.map((photo) => (
+            {data.photos.map((photo, idx) => (
               <div
-                key={photo.id}
+                key={photo.id || idx}
                 onClick={() => setSelectedPhoto(photo)}
-                className="group cursor-pointer bg-white p-2 rounded-2xl shadow-xs border border-stone-200/70 transition-all hover:shadow-md hover:-translate-y-0.5"
+                className="group cursor-pointer bg-white p-2 rounded-2xl shadow-xs border border-stone-200/70 transition-all hover:shadow-md hover:-translate-y-0.5 relative"
               >
                 <div className="aspect-square rounded-xl overflow-hidden mb-2 relative bg-stone-100">
                   <img
@@ -750,6 +776,23 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
+
+                  {/* Admin Quick Replace Button */}
+                  {onReplaceGalleryPhoto && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setReplaceGalleryIndex(idx);
+                      }}
+                      className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-stone-900/80 hover:bg-stone-900 text-white text-[9px] font-semibold flex items-center gap-1 shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer backdrop-blur-xs z-10 opacity-90 group-hover:opacity-100"
+                      title="Upload & Replace this photo"
+                    >
+                      <Camera className="w-2.5 h-2.5 text-amber-300" />
+                      <span>Replace</span>
+                    </button>
+                  )}
+
                   {photo.ageMonth && (
                     <span
                       className="absolute bottom-1.5 right-1.5 text-[9px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded-md text-stone-800 bg-white/90 backdrop-blur-xs shadow-xs font-montserrat"
@@ -763,6 +806,28 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
                 </p>
               </div>
             ))}
+
+            {/* Admin Add New Milestone Memory Card */}
+            {onAddGalleryPhoto && (
+              <div
+                onClick={() => setIsAddGalleryModalOpen(true)}
+                className="group cursor-pointer bg-amber-50/40 p-4 rounded-2xl border-2 border-dashed border-amber-300/80 hover:border-amber-500 hover:bg-amber-50/70 transition-all flex flex-col items-center justify-center text-center aspect-square"
+                title="Upload & Add new milestone photo"
+              >
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center mb-2 shadow-xs transition-transform group-hover:scale-110"
+                  style={{ backgroundColor: `${data.accentColor}25` }}
+                >
+                  <Plus className="w-5 h-5" style={{ color: data.accentColor }} />
+                </div>
+                <span className="text-xs font-bold text-stone-800 font-montserrat">
+                  Add Memory
+                </span>
+                <span className="text-[10px] text-stone-500 font-montserrat mt-0.5">
+                  Upload photo
+                </span>
+              </div>
+            )}
           </div>
         </section>
 
@@ -1037,9 +1102,135 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
               <p className="text-sm font-medium text-stone-800 font-montserrat">
                 {selectedPhoto.caption}
               </p>
+
+              {/* Admin Replace Button in Lightbox */}
+              {onReplaceGalleryPhoto && (
+                <div className="mt-3 pt-3 border-t border-stone-100 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const idx = data.photos.findIndex((p) => p.id === selectedPhoto.id);
+                      if (idx !== -1) {
+                        setReplaceGalleryIndex(idx);
+                      }
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Upload &amp; Replace This Photo</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
+      )}
+
+      {/* Photo Replacement Modal: Baby Portrait */}
+      {onReplaceBabyPhoto && (
+        <PhotoReplaceModal
+          isOpen={isBabyPhotoModalOpen}
+          onClose={() => setIsBabyPhotoModalOpen(false)}
+          currentUrl={data.babyPhotoUrl}
+          onPhotoChange={(newUrl) => {
+            onReplaceBabyPhoto(newUrl);
+            setIsBabyPhotoModalOpen(false);
+          }}
+          title="Replace Baby Portrait Photo"
+          description="Upload and replace the main celebration portrait"
+          accentColor={data.accentColor}
+          presets={[
+            {
+              label: 'Baptism Christening Outfit',
+              url: '/src/assets/images/baby_baptism_portrait_1791254793568.jpg',
+            },
+            {
+              label: 'Sleeping Angel',
+              url: '/src/assets/images/baby_sleeping_angel_1791254831082.jpg',
+            },
+            {
+              label: 'Joyful 1-Year Teddy Memory',
+              url: '/src/assets/images/baby_teddy_memory_1791254818642.jpg',
+            },
+            {
+              label: 'Golden Cake Celebration',
+              url: '/src/assets/images/baptism_cake_gold_1791254806162.jpg',
+            },
+          ]}
+        />
+      )}
+
+      {/* Photo Replacement Modal: Specific Gallery Photo */}
+      {onReplaceGalleryPhoto && replaceGalleryIndex !== null && data.photos[replaceGalleryIndex] && (
+        <PhotoReplaceModal
+          isOpen={replaceGalleryIndex !== null}
+          onClose={() => setReplaceGalleryIndex(null)}
+          currentUrl={data.photos[replaceGalleryIndex]?.url || ''}
+          onPhotoChange={(newUrl) => {
+            if (replaceGalleryIndex !== null) {
+              onReplaceGalleryPhoto(replaceGalleryIndex, newUrl);
+              if (selectedPhoto && selectedPhoto.id === data.photos[replaceGalleryIndex]?.id) {
+                setSelectedPhoto({ ...selectedPhoto, url: newUrl });
+              }
+            }
+            setReplaceGalleryIndex(null);
+          }}
+          title={`Replace Gallery Photo #${replaceGalleryIndex + 1}`}
+          description={`Update photo: ${data.photos[replaceGalleryIndex]?.caption || 'Milestone memory'}`}
+          accentColor={data.accentColor}
+          presets={[
+            {
+              label: 'Baptism Christening Outfit',
+              url: '/src/assets/images/baby_baptism_portrait_1791254793568.jpg',
+            },
+            {
+              label: 'Sleeping Angel',
+              url: '/src/assets/images/baby_sleeping_angel_1791254831082.jpg',
+            },
+            {
+              label: 'Joyful 1-Year Teddy Memory',
+              url: '/src/assets/images/baby_teddy_memory_1791254818642.jpg',
+            },
+            {
+              label: 'Golden Cake Celebration',
+              url: '/src/assets/images/baptism_cake_gold_1791254806162.jpg',
+            },
+          ]}
+        />
+      )}
+
+      {/* Photo Replacement Modal: Add New Gallery Photo */}
+      {onAddGalleryPhoto && (
+        <PhotoReplaceModal
+          isOpen={isAddGalleryModalOpen}
+          onClose={() => setIsAddGalleryModalOpen(false)}
+          currentUrl=""
+          onPhotoChange={(newUrl) => {
+            onAddGalleryPhoto(newUrl);
+            setIsAddGalleryModalOpen(false);
+          }}
+          title="Add New Milestone Memory"
+          description="Upload a photo from your computer or phone to add to Liam's album"
+          accentColor={data.accentColor}
+          presets={[
+            {
+              label: 'Baptism Christening Outfit',
+              url: '/src/assets/images/baby_baptism_portrait_1791254793568.jpg',
+            },
+            {
+              label: 'Sleeping Angel',
+              url: '/src/assets/images/baby_sleeping_angel_1791254831082.jpg',
+            },
+            {
+              label: 'Joyful 1-Year Teddy Memory',
+              url: '/src/assets/images/baby_teddy_memory_1791254818642.jpg',
+            },
+            {
+              label: 'Golden Cake Celebration',
+              url: '/src/assets/images/baptism_cake_gold_1791254806162.jpg',
+            },
+          ]}
+        />
       )}
     </div>
   );
