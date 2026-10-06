@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-cormorant {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+  }
+  .font-playfair {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+  .font-vibes {
+    font-family: 'Great Vibes', cursive;
+  }
+  .font-parisienne {
+    font-family: 'Parisienne', cursive;
+  }
+  .font-montserrat {
+    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  .font-poppins {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+@keyframes gentleFloat {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+@keyframes softSparkle {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes slowPetalFall {
+  0% {
+    transform: translateY(-10%) rotate(0deg) translateX(0px);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.75;
+  }
+  85% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateY(110vh) rotate(360deg) translateX(40px);
+    opacity: 0;
+  }
+}
+
+.animate-float {
+  animation: gentleFloat 4s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: gentleFloat 5s ease-in-out 2s infinite;
+}
+
+.animate-sparkle {
+  animation: softSparkle 3s ease-in-out infinite;
+}
+
+/* Custom scrollbar for builder */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(201, 169, 106, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(201, 169, 106, 0.45);
+}
