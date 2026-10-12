@@ -4,14 +4,14 @@ import { CoverScreen } from '../invitation/CoverScreen';
 import { InvitationView } from '../invitation/InvitationView';
 import { invitationAudio } from '../../utils/audioPlayer';
 import { SacredCrossIcon, GoldSparkleIcon } from '../common/DecorativeIcons';
-import { Edit3, ExternalLink, ShieldCheck, LogOut, Heart, Users } from 'lucide-react';
+import { Edit3, ExternalLink, ShieldCheck, LogOut, Heart, Users, RefreshCw } from 'lucide-react';
 import { AdminRsvpDashboardModal } from '../admin/AdminRsvpDashboardModal';
 import { PublicSite } from '../../types/invitation';
 
 interface PublicGuestViewProps {
   data: InvitationData;
   guestRsvps: GuestRsvp[];
-  onAddRsvp: (rsvp: GuestRsvp) => void;
+  onAddRsvp: (rsvp: GuestRsvp) => Promise<any> | void;
   onOpenBuilder?: () => void;
   isAdminLoggedIn?: boolean;
   onLogout?: () => void;
@@ -22,6 +22,9 @@ interface PublicGuestViewProps {
   onUpdateData?: (updated: InvitationData) => void;
   allSites?: PublicSite[];
   onDeleteRsvp?: (rsvpId: string) => void;
+  onRefreshRsvps?: () => void;
+  isSyncing?: boolean;
+  lastSyncTime?: Date;
 }
 
 export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
@@ -38,6 +41,9 @@ export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
   onUpdateData,
   allSites,
   onDeleteRsvp,
+  onRefreshRsvps,
+  isSyncing = false,
+  lastSyncTime,
 }) => {
   const [isCoverOpen, setIsCoverOpen] = useState(false);
   const [unlocked, setUnlocked] = useState(!passwordProtected);
@@ -135,6 +141,17 @@ export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
               <span className="text-emerald-300 font-bold">✓ {attendingCount} Attending</span>
               <span className="text-stone-300 font-bold">✗ {declinedCount} Declined</span>
             </button>
+
+            {onRefreshRsvps && (
+              <button
+                onClick={onRefreshRsvps}
+                disabled={isSyncing}
+                className="p-1 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer disabled:opacity-40"
+                title={lastSyncTime ? `Sync RSVPs (Last: ${lastSyncTime.toLocaleTimeString()})` : 'Sync RSVPs with server'}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-300' : ''}`} />
+              </button>
+            )}
 
             {onOpenBuilder && (
               <button
@@ -355,6 +372,9 @@ export const PublicGuestView: React.FC<PublicGuestViewProps> = ({
           activeSiteId={allSites && allSites.length > 0 ? allSites[0].id : 'guest_current_site'}
           onDeleteRsvp={(_, rsvpId) => onDeleteRsvp?.(rsvpId)}
           onClearSiteRsvps={() => {}}
+          onRefreshRsvps={onRefreshRsvps}
+          isSyncing={isSyncing}
+          lastSyncTime={lastSyncTime}
         />
       )}
     </div>

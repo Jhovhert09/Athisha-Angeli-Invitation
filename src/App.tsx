@@ -15,8 +15,11 @@ import { AdminRsvpDashboardModal } from './components/admin/AdminRsvpDashboardMo
 import { AdminLoginModal } from './components/admin/AdminLoginModal';
 import { AdminSecurityModal } from './components/admin/AdminSecurityModal';
 import { SacredCrossIcon } from './components/common/DecorativeIcons';
-import { Eye, Edit3, Share2, Globe, Shield, CheckCircle2, AlertCircle, Heart, LogOut, Key, Bell, XCircle, X } from 'lucide-react';
+import { Eye, Edit3, Share2, Globe, Shield, CheckCircle2, AlertCircle, Heart, LogOut, Key, Bell, XCircle, X, RefreshCw } from 'lucide-react';
 import {
+  submitRsvpToServer,
+  deleteRsvpFromServer,
+  clearRsvpsFromServer,
   broadcastRsvpEvent,
   subscribeToRsvpEvents,
   fetchServerRsvps,
@@ -214,15 +217,41 @@ export default function App() {
   const handleManualRefreshRsvps = async () => {
     setIsSyncingRsvps(true);
     try {
-      const serverSites = await fetchServerSites();
+      const [serverSites, serverRsvps] = await Promise.all([
+        fetchServerSites(),
+        fetchServerRsvps(),
+      ]);
       if (serverSites && serverSites.length > 0) {
-        setSites(serverSites);
+        setSites((prevSites) => {
+          return serverSites.map((sSite) => {
+            const matchingRsvps = serverRsvps?.filter(
+              (r) => r.siteId === sSite.id || serverSites.length === 1
+            );
+            const rsvps = matchingRsvps && matchingRsvps.length > 0
+              ? matchingRsvps.map(({ siteId: _, ...r }) => r)
+              : sSite.rsvps;
+            return {
+              ...sSite,
+              rsvps,
+            };
+          });
+        });
+      } else if (serverRsvps && serverRsvps.length > 0) {
+        setSites((prev) =>
+          prev.map((s) => {
+            const matches = serverRsvps.filter((r) => r.siteId === s.id || prev.length === 1);
+            return {
+              ...s,
+              rsvps: matches.map(({ siteId: _, ...r }) => r),
+            };
+          })
+        );
       }
       setLastSyncTime(new Date());
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.warn('Manual refresh error:', err);
     } finally {
-      setTimeout(() => setIsSyncingRsvps(false), 500);
+      setTimeout(() => setIsSyncingRsvps(false), 400);
     }
   };
 
@@ -269,6 +298,7 @@ export default function App() {
           guestCount: incoming.guestCount,
           message: incoming.message,
         });
+        setLastSyncTime(new Date());
       } else if (payload.type === 'DELETE_RSVP' && payload.rsvpId) {
         setSites((prevSites) =>
           prevSites.map((site) =>
@@ -280,6 +310,7 @@ export default function App() {
               : site
           )
         );
+        setLastSyncTime(new Date());
       } else if (payload.type === 'CLEAR_RSVPS') {
         setSites((prevSites) =>
           prevSites.map((site) =>
@@ -291,10 +322,11 @@ export default function App() {
               : site
           )
         );
+        setLastSyncTime(new Date());
       } else if (payload.type === 'SITES_UPDATED' && payload.sites) {
         const incomingSites = payload.sites;
         setSites((prevSites) => {
-          // Merge preserving any active local changes
+          // Merge preserving any active local changes and existing RSVPs
           const map = new Map<string, PublicSite>();
           incomingSites.forEach((s) => map.set(s.id, s));
           prevSites.forEach((s) => {
@@ -302,23 +334,24 @@ export default function App() {
           });
           return Array.from(map.values());
         });
+        setLastSyncTime(new Date());
       } else if (payload.type === 'SYNC_ALL_RSVPS' && payload.allRsvps) {
         const allItems = payload.allRsvps;
         setSites((prevSites) => {
           return prevSites.map((site) => {
             const matches = allItems.filter((item: { siteId: string } & GuestRsvp) => item.siteId === site.id);
             const relevantItems = matches.length > 0 ? matches : (prevSites.length === 1 ? allItems : []);
-            if (relevantItems.length > 0 || site.rsvps.length > 0) {
-              const rsvpsOnly: GuestRsvp[] = relevantItems.map((item: { siteId: string } & GuestRsvp) => {
-                const { siteId: _, ...r } = item;
-                return r;
-              });
-              if (JSON.stringify(rsvpsOnly) !== JSON.stringify(site.rsvps)) {
-                return {
-                  ...site,
-                  rsvps: rsvpsOnly,
-                };
-              }
+            const rsvpsOnly: GuestRsvp[] = relevantItems.map((item: { siteId: string } & GuestRsvp) => {
+              const { siteId: _, ...r } = item;
+              return r;
+            });
+            const currentIds = site.rsvps.map((r) => r.id + '_' + r.attending + '_' + (r.guestCount || 1)).join('|');
+            const newIds = rsvpsOnly.map((r) => r.id + '_' + r.attending + '_' + (r.guestCount || 1)).join('|');
+            if (currentIds !== newIds) {
+              return {
+                ...site,
+                rsvps: rsvpsOnly,
+              };
             }
             return site;
           });
@@ -340,26 +373,8 @@ export default function App() {
     };
     window.addEventListener('storage', handleStorage);
 
-    // 3. Initial database fetch from server (Loads cross-device state!)
-    fetchServerSites().then((serverSites) => {
-      if (serverSites && serverSites.length > 0) {
-        setSites((prevSites) => {
-          // Keep newer RSVPs by merging
-          const merged = serverSites.map((sSite) => {
-            const pSite = prevSites.find((p) => p.id === sSite.id);
-            if (!pSite) return sSite;
-            const rsvpMap = new Map<string, GuestRsvp>();
-            sSite.rsvps.forEach((r) => rsvpMap.set(r.id, r));
-            pSite.rsvps.forEach((r) => rsvpMap.set(r.id, r));
-            return {
-              ...sSite,
-              rsvps: Array.from(rsvpMap.values()),
-            };
-          });
-          return merged;
-        });
-      }
-    });
+    // 3. Initial database fetch from server (Loads authoritative cross-device state!)
+    handleManualRefreshRsvps();
 
     return () => {
       unsubscribeBroadcast();
@@ -368,12 +383,15 @@ export default function App() {
   }, []);
 
   // Debounced server backup of sites and photos
+  // CRITICAL: Only an authenticated admin actively in studio/builder mode saves site configuration.
+  // Guests on phones in public view NEVER trigger saveServerSites!
   useEffect(() => {
+    if (!isAdminLoggedIn || isGuestMode) return;
     const timer = setTimeout(() => {
       saveServerSites(sites);
     }, 2000);
     return () => clearTimeout(timer);
-  }, [sites]);
+  }, [sites, isAdminLoggedIn, isGuestMode]);
 
   // Update active site data from Builder
   const handleUpdateActiveSiteData = (updatedData: InvitationData) => {
@@ -406,7 +424,8 @@ export default function App() {
   };
 
   // RSVP submission (by guest on public site or preview)
-  const handleAddRsvpToGuestSite = (newRsvp: GuestRsvp) => {
+  const handleAddRsvpToGuestSite = async (newRsvp: GuestRsvp) => {
+    // 1. Optimistic instant local update
     setSites((prevSites) =>
       prevSites.map((site) =>
         site.id === guestSite.id
@@ -418,15 +437,10 @@ export default function App() {
       )
     );
 
-    // Broadcast in real-time to all open admin tabs and server
-    broadcastRsvpEvent({
-      type: 'NEW_RSVP',
-      siteId: guestSite.id,
-      rsvp: newRsvp,
-      timestamp: Date.now(),
-    });
+    // 2. Persist directly to server database and broadcast to other devices
+    const res = await submitRsvpToServer(guestSite.id, newRsvp);
 
-    // Also trigger toast in current session
+    // 3. Trigger toast notification in current session
     setRsvpToast({
       id: newRsvp.id,
       name: newRsvp.name,
@@ -434,10 +448,12 @@ export default function App() {
       guestCount: newRsvp.guestCount,
       message: newRsvp.message,
     });
+
+    return res;
   };
 
   // Clear RSVPs on active site
-  const handleClearActiveSiteRsvps = () => {
+  const handleClearActiveSiteRsvps = async () => {
     if (window.confirm('Are you sure you want to clear all guest RSVP responses for this site?')) {
       setSites((prevSites) =>
         prevSites.map((site) =>
@@ -449,16 +465,12 @@ export default function App() {
             : site
         )
       );
-      broadcastRsvpEvent({
-        type: 'CLEAR_RSVPS',
-        siteId: activeSite.id,
-        timestamp: Date.now(),
-      });
+      await clearRsvpsFromServer(activeSite.id);
     }
   };
 
   // Delete specific RSVP
-  const handleDeleteRsvpFromSite = (siteId: string, rsvpId: string) => {
+  const handleDeleteRsvpFromSite = async (siteId: string, rsvpId: string) => {
     setSites((prev) =>
       prev.map((s) =>
         s.id === siteId
@@ -469,12 +481,7 @@ export default function App() {
           : s
       )
     );
-    broadcastRsvpEvent({
-      type: 'DELETE_RSVP',
-      siteId,
-      rsvpId,
-      timestamp: Date.now(),
-    });
+    await deleteRsvpFromServer(rsvpId, siteId);
   };
 
   // Admin: Create new site
@@ -515,11 +522,12 @@ export default function App() {
 
 
   // Admin: Clear all RSVPs for specific site
-  const handleClearSiteRsvps = (siteId: string) => {
+  const handleClearSiteRsvps = async (siteId: string) => {
     if (window.confirm('Are you sure you want to clear all RSVPs for this site?')) {
       setSites((prev) =>
         prev.map((s) => (s.id === siteId ? { ...s, rsvps: [] } : s))
       );
+      await clearRsvpsFromServer(siteId);
     }
   };
 
@@ -560,6 +568,9 @@ export default function App() {
           onUpdateData={handleUpdateGuestSiteData}
           allSites={sites}
           onDeleteRsvp={(rsvpId) => handleDeleteRsvpFromSite(guestSite.id, rsvpId)}
+          onRefreshRsvps={handleManualRefreshRsvps}
+          isSyncing={isSyncingRsvps}
+          lastSyncTime={lastSyncTime}
         />
 
         {/* Live Real-Time RSVP Toast Notification Banner */}
@@ -761,6 +772,16 @@ export default function App() {
             </span>
           </button>
 
+          {/* Quick Database Sync Button */}
+          <button
+            onClick={handleManualRefreshRsvps}
+            disabled={isSyncingRsvps}
+            className="p-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 hover:text-stone-900 border border-stone-200 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+            title={isSyncingRsvps ? 'Syncing with database...' : `Sync RSVPs database now (Last synced: ${lastSyncTime.toLocaleTimeString()})`}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingRsvps ? 'animate-spin text-amber-600' : ''}`} />
+          </button>
+
           {/* Admin Sites Button */}
           <button
             onClick={() => setIsAdminSiteModalOpen(true)}
@@ -900,6 +921,9 @@ export default function App() {
         activeSiteId={activeSite.id}
         onDeleteRsvp={handleDeleteRsvpFromSite}
         onClearSiteRsvps={handleClearSiteRsvps}
+        onRefreshRsvps={handleManualRefreshRsvps}
+        isSyncing={isSyncingRsvps}
+        lastSyncTime={lastSyncTime}
       />
 
       {/* Admin Security & Password Settings Modal */}

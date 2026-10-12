@@ -1,7 +1,7 @@
 /**
  * Real-time Multi-Device RSVP Synchronization Service
  * Handles cross-device Server-Sent Events (SSE), background REST persistence,
- * fast fallback polling, and local BroadcastChannel for instant same-browser updates.
+ * fast mobile-friendly polling, tab focus syncing, and local BroadcastChannel.
  */
 
 import { GuestRsvp, PublicSite } from '../types/invitation';
@@ -18,59 +18,143 @@ export interface RsvpEventPayload {
 
 const BROADCAST_CHANNEL_NAME = 'blessed_milestones_rsvp_channel';
 
-// Singleton BroadcastChannel for same-browser instant sync
+// Singleton BroadcastChannel for same-browser instant sync across open tabs
 let channel: BroadcastChannel | null = null;
 try {
   if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
     channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
   }
 } catch {
-  // BroadcastChannel not available
+  // BroadcastChannel not available in older environments
 }
 
 /**
- * Broadcast an RSVP event to local tabs AND persist to server database
+ * Submit or update an RSVP on the server database.
+ * Returns confirmation with the saved RSVP data.
+ */
+export async function submitRsvpToServer(
+  siteId: string,
+  rsvp: GuestRsvp
+): Promise<{ success: boolean; rsvp?: GuestRsvp; siteId?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/rsvps', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        siteId,
+        ...rsvp,
+      }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, error: errData.error || `Server responded with status ${res.status}` };
+    }
+
+    const data = await res.json();
+    const confirmedRsvp: GuestRsvp = data.rsvp || rsvp;
+    const confirmedSiteId: string = data.siteId || siteId;
+
+    // Immediately notify local BroadcastChannel for instant same-browser update
+    if (channel) {
+      try {
+        channel.postMessage({
+          type: 'NEW_RSVP',
+          siteId: confirmedSiteId,
+          rsvp: confirmedRsvp,
+          timestamp: Date.now(),
+        });
+      } catch {}
+    }
+
+    return { success: true, rsvp: confirmedRsvp, siteId: confirmedSiteId };
+  } catch (err: any) {
+    console.error('Network error submitting RSVP to server:', err);
+    return { success: false, error: err?.message || 'Network connection failed' };
+  }
+}
+
+/**
+ * Delete a specific RSVP from the server database
+ */
+export async function deleteRsvpFromServer(rsvpId: string, siteId?: string): Promise<boolean> {
+  try {
+    const url = siteId
+      ? `/api/rsvps/${encodeURIComponent(rsvpId)}?siteId=${encodeURIComponent(siteId)}`
+      : `/api/rsvps/${encodeURIComponent(rsvpId)}`;
+    const res = await fetch(url, { method: 'DELETE' });
+    if (res.ok && channel) {
+      try {
+        channel.postMessage({
+          type: 'DELETE_RSVP',
+          siteId: siteId || '',
+          rsvpId,
+          timestamp: Date.now(),
+        });
+      } catch {}
+    }
+    return res.ok;
+  } catch (err) {
+    console.warn('Error deleting RSVP from server:', err);
+    return false;
+  }
+}
+
+/**
+ * Clear all RSVPs for a specific site from server database
+ */
+export async function clearRsvpsFromServer(siteId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/rsvps?siteId=${encodeURIComponent(siteId)}`, {
+      method: 'DELETE',
+    });
+    if (res.ok && channel) {
+      try {
+        channel.postMessage({
+          type: 'CLEAR_RSVPS',
+          siteId,
+          timestamp: Date.now(),
+        });
+      } catch {}
+    }
+    return res.ok;
+  } catch (err) {
+    console.warn('Error clearing RSVPs on server:', err);
+    return false;
+  }
+}
+
+/**
+ * Broadcast an RSVP event (delegates to server REST and BroadcastChannel)
  */
 export async function broadcastRsvpEvent(payload: RsvpEventPayload): Promise<void> {
-  // 1. Post to local BroadcastChannel for zero-latency same-browser tabs
   if (channel) {
     try {
       channel.postMessage(payload);
-    } catch {
-      // Ignore
-    }
+    } catch {}
   }
 
-  // 2. Transmit to server database for multi-device synchronization
   try {
     if (payload.type === 'NEW_RSVP' && payload.rsvp) {
-      await fetch('/api/rsvps', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          siteId: payload.siteId,
-          ...payload.rsvp,
-        }),
-      });
+      await submitRsvpToServer(payload.siteId, payload.rsvp);
     } else if (payload.type === 'DELETE_RSVP' && payload.rsvpId) {
-      await fetch(`/api/rsvps/${payload.rsvpId}?siteId=${encodeURIComponent(payload.siteId)}`, {
-        method: 'DELETE',
-      });
-    } else if (payload.type === 'CLEAR_RSVPS') {
-      await fetch(`/api/rsvps?siteId=${encodeURIComponent(payload.siteId)}`, {
-        method: 'DELETE',
-      });
+      await deleteRsvpFromServer(payload.rsvpId, payload.siteId);
+    } else if (payload.type === 'CLEAR_RSVPS' && payload.siteId) {
+      await clearRsvpsFromServer(payload.siteId);
     }
   } catch (err) {
-    console.warn('Network sync error in broadcastRsvpEvent:', err);
+    console.warn('Error broadcasting RSVP event:', err);
   }
 }
 
 /**
  * Subscribe to RSVP events from all sources:
  * 1) Server-Sent Events (SSE) from the backend server (across all devices!)
- * 2) Same-browser BroadcastChannel
- * 3) Active heartbeat polling every 3.5s to guarantee 100% reliability on mobile networks
+ * 2) Same-browser BroadcastChannel (zero-latency tabs)
+ * 3) Active background polling every 2.0s for mobile networks
+ * 4) Event listeners for page visibilitychange, window focus, and online events
  */
 export function subscribeToRsvpEvents(
   onEvent: (payload: RsvpEventPayload) => void
@@ -92,6 +176,9 @@ export function subscribeToRsvpEvents(
     if (isCleanedUp || typeof window === 'undefined') return;
 
     try {
+      if (eventSource) {
+        eventSource.close();
+      }
       eventSource = new EventSource('/api/events');
 
       eventSource.addEventListener('NEW_RSVP', (e: MessageEvent) => {
@@ -145,19 +232,17 @@ export function subscribeToRsvpEvents(
         // Automatically reconnect after delay if disconnected
         eventSource?.close();
         if (!isCleanedUp) {
-          setTimeout(connectSSE, 4000);
+          setTimeout(connectSSE, 3000);
         }
       };
     } catch {
-      // EventSource not supported or blocked
+      // EventSource not supported
     }
   };
 
   connectSSE();
 
-  // 3. Robust background poll: Checks server for new RSVPs every 2.5 seconds
-  // Ensures updates appear even if SSE connection drops or is throttled by mobile sleep
-  let lastKnownRsvpIds = new Set<string>();
+  // 3. Robust background poll: Checks server for new RSVPs every 2.0 seconds
   let lastKnownRsvpsJson = '';
 
   const pollServer = async () => {
@@ -171,21 +256,7 @@ export function subscribeToRsvpEvents(
           if (currentJson !== lastKnownRsvpsJson) {
             lastKnownRsvpsJson = currentJson;
 
-            // Detect newly added items
-            for (const item of items) {
-              if (lastKnownRsvpIds.size > 0 && !lastKnownRsvpIds.has(item.id)) {
-                const { siteId, ...rsvp } = item;
-                onEvent({
-                  type: 'NEW_RSVP',
-                  siteId,
-                  rsvp,
-                  timestamp: Date.now(),
-                });
-              }
-            }
-
-            // Sync the full list
-            lastKnownRsvpIds = new Set(items.map((i: any) => i.id));
+            // Broadcast the full updated list
             onEvent({
               type: 'SYNC_ALL_RSVPS',
               siteId: '',
@@ -200,16 +271,43 @@ export function subscribeToRsvpEvents(
     }
 
     if (!isCleanedUp) {
-      pollTimer = setTimeout(pollServer, 2500);
+      pollTimer = setTimeout(pollServer, 2000);
     }
   };
 
-  pollTimer = setTimeout(pollServer, 1000);
+  pollTimer = setTimeout(pollServer, 800);
+
+  // 4. Mobile screen wake / tab focus handlers: poll immediately when user switches back to browser
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      pollServer();
+    }
+  };
+
+  const handleWindowFocus = () => {
+    pollServer();
+  };
+
+  const handleOnline = () => {
+    connectSSE();
+    pollServer();
+  };
+
+  if (typeof window !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('online', handleOnline);
+  }
 
   // Return cleanup function
   return () => {
     isCleanedUp = true;
     channel?.removeEventListener('message', handleBcMessage);
+    if (typeof window !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('online', handleOnline);
+    }
     if (eventSource) {
       eventSource.close();
       eventSource = null;
@@ -257,7 +355,7 @@ export async function fetchServerSites(): Promise<PublicSite[] | null> {
 }
 
 /**
- * Save / sync all sites to server database
+ * Save / sync sites to server database
  */
 export async function saveServerSites(sites: PublicSite[]): Promise<boolean> {
   try {

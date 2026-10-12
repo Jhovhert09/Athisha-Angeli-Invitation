@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import confetti from 'canvas-confetti';
 import { GuestRsvp } from '../../types/invitation';
 import { GoldSparkleIcon, SacredCrossIcon } from '../common/DecorativeIcons';
-import { Heart, X, CheckCircle2 } from 'lucide-react';
+import { Heart, X, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 
 interface RsvpModalProps {
   isOpen: boolean;
@@ -11,7 +11,7 @@ interface RsvpModalProps {
   accentColor: string;
   babyName: string;
   existingRsvp?: GuestRsvp | null;
-  onConfirm: (rsvp: GuestRsvp) => void;
+  onConfirm: (rsvp: GuestRsvp) => Promise<any> | void;
 }
 
 export const RsvpModal: React.FC<RsvpModalProps> = ({
@@ -28,6 +28,8 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
   const [emailOrPhone, setEmailOrPhone] = useState(existingRsvp?.emailOrPhone || '');
   const [guestCount, setGuestCount] = useState<number>(existingRsvp?.guestCount || 1);
   const [message, setMessage] = useState(existingRsvp?.message || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
   React.useEffect(() => {
@@ -36,12 +38,15 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
+    setIsSubmitting(true);
+    setSubmitError(null);
+
     const newRsvp: GuestRsvp = {
-      id: existingRsvp?.id || 'rsvp_' + Date.now(),
+      id: existingRsvp?.id || 'rsvp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       name: name.trim(),
       emailOrPhone: emailOrPhone.trim() || undefined,
       attending,
@@ -54,20 +59,32 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
       }),
     };
 
-    onConfirm(newRsvp);
-    setSubmitted(true);
-
-    if (attending) {
-      try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#C9A96A', '#FFFDF8', '#96B3D6', '#EAD9BC'],
-        });
-      } catch {
-        // confetti fallback
+    try {
+      const result = await onConfirm(newRsvp);
+      if (result && result.success === false) {
+        setSubmitError(result.error || 'Failed to record RSVP on server. Please try again.');
+        setIsSubmitting(false);
+        return;
       }
+
+      setSubmitted(true);
+      if (attending) {
+        try {
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#C9A96A', '#FFFDF8', '#96B3D6', '#EAD9BC'],
+          });
+        } catch {
+          // confetti fallback
+        }
+      }
+    } catch (err: any) {
+      console.error('Error submitting RSVP:', err);
+      setSubmitError('Unable to send response right now. Please check your connection and tap again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -80,7 +97,7 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 transition-colors"
+          className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 transition-colors cursor-pointer"
           aria-label="Close RSVP modal"
         >
           <X className="w-5 h-5" />
@@ -90,14 +107,17 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
           <div>
             {/* Header */}
             <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full mb-3" style={{ background: `${accentColor}18` }}>
+              <div
+                className="inline-flex items-center justify-center w-10 h-10 rounded-full mb-3"
+                style={{ background: `${accentColor}18` }}
+              >
                 <SacredCrossIcon color={accentColor} className="w-5 h-5" />
               </div>
 
               <h3 className="font-cormorant text-2xl sm:text-3xl font-semibold text-stone-800">
                 {attending
                   ? "We're so happy you'll be joining us!"
-                  : "We will miss your presence"}
+                  : 'We will miss your presence'}
               </h3>
               <p className="text-xs sm:text-sm text-stone-500 font-montserrat mt-1">
                 Celebrating {babyName}&apos;s Holy Baptism &amp; 1st Birthday
@@ -109,7 +129,7 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
               <button
                 type="button"
                 onClick={() => setAttending(true)}
-                className={`py-2 text-xs font-montserrat font-medium rounded-xl transition-all ${
+                className={`py-2 text-xs font-montserrat font-medium rounded-xl transition-all cursor-pointer ${
                   attending
                     ? 'bg-white text-stone-900 shadow-sm'
                     : 'text-stone-500 hover:text-stone-800'
@@ -120,7 +140,7 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
               <button
                 type="button"
                 onClick={() => setAttending(false)}
-                className={`py-2 text-xs font-montserrat font-medium rounded-xl transition-all ${
+                className={`py-2 text-xs font-montserrat font-medium rounded-xl transition-all cursor-pointer ${
                   !attending
                     ? 'bg-white text-stone-900 shadow-sm'
                     : 'text-stone-500 hover:text-stone-800'
@@ -129,6 +149,17 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
                 Declining with Love
               </button>
             </div>
+
+            {/* Error notice if submission failed */}
+            {submitError && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-montserrat flex items-start gap-2 animate-fade-in">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-semibold">Unable to save RSVP</p>
+                  <p className="text-[11px] text-rose-700">{submitError}</p>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4 font-montserrat">
               {/* Full Name */}
@@ -192,8 +223,8 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder={
                     attending
-                      ? "Warm wishes for Liam and parents..."
-                      : "Send warm regrets and loving prayers..."
+                      ? 'Warm wishes for Liam and parents...'
+                      : 'Send warm regrets and loving prayers...'
                   }
                   className="w-full px-4 py-2 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-600 transition-all text-stone-800 placeholder:text-stone-400 resize-none"
                 />
@@ -202,15 +233,25 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
               {/* Submit CTA */}
               <button
                 type="submit"
-                className="w-full py-3.5 px-6 rounded-2xl font-montserrat text-sm font-semibold text-white shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 transform active:scale-[0.99]"
+                disabled={isSubmitting || !name.trim()}
+                className="w-full py-3.5 px-6 rounded-2xl font-montserrat text-sm font-semibold text-white shadow-md hover:shadow-lg disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2 transform active:scale-[0.99] cursor-pointer"
                 style={{
                   background: attending
                     ? `linear-gradient(135deg, ${accentColor}, #A87D43)`
                     : 'linear-gradient(135deg, #78716C, #57534E)',
                 }}
               >
-                <Heart className="w-4 h-4 fill-white/80" />
-                <span>{attending ? 'Confirm My Attendance' : 'Send My Regrets & Love'}</span>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Saving your response...</span>
+                  </>
+                ) : (
+                  <>
+                    <Heart className="w-4 h-4 fill-white/80" />
+                    <span>{attending ? 'Confirm My Attendance' : 'Send My Regrets & Love'}</span>
+                  </>
+                )}
               </button>
             </form>
           </div>
@@ -224,7 +265,10 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
               <CheckCircle2 className="w-8 h-8" style={{ color: accentColor }} />
             </div>
 
-            <div className="flex items-center justify-center gap-1.5 text-xs font-semibold tracking-wider uppercase mb-1" style={{ color: accentColor }}>
+            <div
+              className="flex items-center justify-center gap-1.5 text-xs font-semibold tracking-wider uppercase mb-1"
+              style={{ color: accentColor }}
+            >
               <GoldSparkleIcon color={accentColor} className="w-3.5 h-3.5" />
               <span>{attending ? "You're on the guest list!" : 'Response Recorded'}</span>
             </div>
@@ -243,12 +287,15 @@ export const RsvpModal: React.FC<RsvpModalProps> = ({
               <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200/80 mb-6 text-xs text-stone-600 text-center">
                 <span className="block text-stone-400 text-[11px]">Confirmed Guest</span>
                 <span className="font-semibold text-stone-800 text-sm">{name}</span>
+                <span className="block text-[11px] text-emerald-600 mt-0.5 font-medium">
+                  ✓ Recorded in event database
+                </span>
               </div>
             )}
 
             <button
               onClick={onClose}
-              className="w-full py-3 px-4 rounded-xl text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
+              className="w-full py-3 px-4 rounded-xl text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors cursor-pointer"
             >
               Close &amp; View Invitation
             </button>

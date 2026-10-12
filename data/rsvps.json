@@ -1,0 +1,20 @@
+[
+  {
+    "siteId": "site_liam_1",
+    "id": "rsvp_sample_1",
+    "name": "Maria Santos",
+    "attending": true,
+    "guestCount": 1,
+    "message": "So honored to be Godmother to baby Liam! May God shower his life with endless blessings.",
+    "submittedAt": "Oct 4, 2026"
+  },
+  {
+    "siteId": "site_liam_1",
+    "id": "rsvp_sample_2",
+    "name": "Engr. Rafael Reyes",
+    "attending": true,
+    "guestCount": 1,
+    "message": "Can’t wait to celebrate Liam’s first milestone and sacrament with the family!",
+    "submittedAt": "Oct 5, 2026"
+  }
+]

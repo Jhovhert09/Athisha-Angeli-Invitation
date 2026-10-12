@@ -36,7 +36,7 @@ interface InvitationViewProps {
   data: InvitationData;
   onResetCover?: () => void;
   guestRsvps: GuestRsvp[];
-  onAddRsvp: (rsvp: GuestRsvp) => void;
+  onAddRsvp: (rsvp: GuestRsvp) => Promise<any> | void;
   onReplaceBabyPhoto?: (newUrl: string) => void;
   onReplaceGalleryPhoto?: (index: number, newUrl: string) => void;
   onAddGalleryPhoto?: (newUrl: string) => void;
@@ -57,7 +57,13 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
   // RSVP state
   const [isRsvpModalOpen, setIsRsvpModalOpen] = useState(false);
   const [attendingInitial, setAttendingInitial] = useState(true);
-  const [confirmedRsvp, setConfirmedRsvp] = useState<GuestRsvp | null>(null);
+  const [confirmedRsvp, setConfirmedRsvp] = useState<GuestRsvp | null>(() => {
+    try {
+      const saved = localStorage.getItem(`guest_rsvp_${data.babyName}`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
 
   // Gallery Lightbox
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryPhoto | null>(null);
@@ -110,9 +116,12 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
   }, [data.countdownTarget]);
 
   // Handle RSVP confirmation
-  const handleRsvpConfirm = (rsvp: GuestRsvp) => {
+  const handleRsvpConfirm = async (rsvp: GuestRsvp) => {
     setConfirmedRsvp(rsvp);
-    onAddRsvp(rsvp);
+    try {
+      localStorage.setItem(`guest_rsvp_${data.babyName}`, JSON.stringify(rsvp));
+    } catch {}
+    return await onAddRsvp(rsvp);
   };
 
   // Typography class helpers

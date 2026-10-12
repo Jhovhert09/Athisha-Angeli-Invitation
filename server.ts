@@ -15,8 +15,9 @@ const __dirname = path.dirname(__filename);
 const rootDir = __dirname;
 const dataDir = path.resolve(rootDir, 'data');
 const dbFile = path.resolve(dataDir, 'sites_db.json');
+const rsvpsFile = path.resolve(dataDir, 'rsvps.json');
 
-// Initial seed data if database is empty
+// Initial seed data if database is completely empty
 const INITIAL_RSVPS: GuestRsvp[] = [
   {
     id: 'rsvp_sample_1',
@@ -51,7 +52,7 @@ const DEFAULT_SEED_SITES: PublicSite[] = [
   },
 ];
 
-// Ensure database file exists
+// Ensure database files exist
 function initDatabase(): void {
   try {
     if (!fs.existsSync(dataDir)) {
@@ -61,10 +62,19 @@ function initDatabase(): void {
       fs.writeFileSync(dbFile, JSON.stringify(DEFAULT_SEED_SITES, null, 2), 'utf-8');
     } else {
       const content = fs.readFileSync(dbFile, 'utf-8');
-      const parsed = JSON.parse(content);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
+      try {
+        const parsed = JSON.parse(content);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          fs.writeFileSync(dbFile, JSON.stringify(DEFAULT_SEED_SITES, null, 2), 'utf-8');
+        }
+      } catch {
         fs.writeFileSync(dbFile, JSON.stringify(DEFAULT_SEED_SITES, null, 2), 'utf-8');
       }
+    }
+
+    if (!fs.existsSync(rsvpsFile)) {
+      const flatRsvps = INITIAL_RSVPS.map((r) => ({ siteId: 'site_liam_1', ...r }));
+      fs.writeFileSync(rsvpsFile, JSON.stringify(flatRsvps, null, 2), 'utf-8');
     }
   } catch (err) {
     console.error('Failed to initialize database file:', err);
@@ -94,10 +104,20 @@ function writeSites(sites: PublicSite[]): void {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    // Atomic safe write
     const tempFile = `${dbFile}.tmp.${Date.now()}`;
     fs.writeFileSync(tempFile, JSON.stringify(sites, null, 2), 'utf-8');
     fs.renameSync(tempFile, dbFile);
+
+    // Also sync flat rsvps.json ledger
+    const allRsvps: Array<{ siteId: string } & GuestRsvp> = [];
+    sites.forEach((site) => {
+      (site.rsvps || []).forEach((r) => {
+        allRsvps.push({ siteId: site.id, ...r });
+      });
+    });
+    const tempRsvpsFile = `${rsvpsFile}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempRsvpsFile, JSON.stringify(allRsvps, null, 2), 'utf-8');
+    fs.renameSync(tempRsvpsFile, rsvpsFile);
   } catch (err) {
     console.error('Error writing sites to db:', err);
   }
@@ -121,7 +141,7 @@ function broadcastSSE(eventType: string, data: any) {
   }
 }
 
-// Periodically clean up and keep SSE connections open (ping every 15s)
+// Keep SSE connections alive through mobile sleep / Cloud Run proxies (ping every 10s)
 setInterval(() => {
   for (let i = sseClients.length - 1; i >= 0; i--) {
     try {
@@ -130,7 +150,7 @@ setInterval(() => {
       sseClients.splice(i, 1);
     }
   }
-}, 15000);
+}, 10000);
 
 async function startServer() {
   const app = express();
@@ -141,11 +161,16 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-  // CORS headers
+  // CORS headers & no-cache headers for API
   app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.path.startsWith('/api/')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
     if (req.method === 'OPTIONS') {
       res.status(200).end();
       return;
@@ -155,7 +180,15 @@ async function startServer() {
 
   // Health check
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: Date.now() });
+    const sites = readSites();
+    const totalRsvps = sites.reduce((sum, s) => sum + (s.rsvps?.length || 0), 0);
+    res.json({
+      status: 'ok',
+      sitesCount: sites.length,
+      rsvpsCount: totalRsvps,
+      connectedClients: sseClients.length,
+      timestamp: Date.now(),
+    });
   });
 
   // Server-Sent Events (SSE) Endpoint for real-time cross-device updates
@@ -163,8 +196,8 @@ async function startServer() {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // Disable proxy buffering
-    res.flushHeaders();
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx / Cloud Run proxy buffering
+    res.flushHeaders?.();
 
     const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     sseClients.push({ id: clientId, res });
@@ -202,6 +235,7 @@ async function startServer() {
   });
 
   // POST sync / update sites
+  // CRITICAL: Protects and preserves all existing RSVPs in the database!
   app.post('/api/sites', (req: Request, res: Response) => {
     try {
       const incoming = req.body;
@@ -219,8 +253,30 @@ async function startServer() {
       }
 
       const current = readSites();
-      // Merge by site ID
-      const merged = [...sitesToSave];
+      const currentMap = new Map(current.map((c) => [c.id, c]));
+
+      const merged: PublicSite[] = sitesToSave.map((incomingSite) => {
+        const existing = currentMap.get(incomingSite.id);
+        if (!existing) return incomingSite;
+
+        // CRITICAL: Preserve all existing RSVPs from the database!
+        // Combine existing RSVPs with any new incoming RSVPs, deduplicated by rsvp.id
+        const rsvpMap = new Map<string, GuestRsvp>();
+        (existing.rsvps || []).forEach((r) => rsvpMap.set(r.id, r));
+        (incomingSite.rsvps || []).forEach((r) => {
+          if (!rsvpMap.has(r.id)) {
+            rsvpMap.set(r.id, r);
+          }
+        });
+
+        return {
+          ...incomingSite,
+          // Authoritative RSVP list from the server database
+          rsvps: Array.from(rsvpMap.values()),
+        };
+      });
+
+      // Also preserve any other sites currently in the database that were not in incoming payload
       for (const cur of current) {
         if (!merged.some((m) => m.id === cur.id)) {
           merged.push(cur);
@@ -246,14 +302,14 @@ async function startServer() {
 
     if (siteId) {
       const site = sites.find((s) => s.id === siteId || s.slug === siteId);
-      res.json(site ? site.rsvps : []);
+      res.json(site ? (site.rsvps || []) : []);
       return;
     }
 
     // Flatten all RSVPs with siteId
     const allRsvps: Array<{ siteId: string } & GuestRsvp> = [];
     sites.forEach((site) => {
-      site.rsvps.forEach((rsvp) => {
+      (site.rsvps || []).forEach((rsvp) => {
         allRsvps.push({ siteId: site.id, ...rsvp });
       });
     });
@@ -264,7 +320,7 @@ async function startServer() {
   app.post('/api/rsvps', (req: Request, res: Response) => {
     try {
       const payload = req.body;
-      const targetSiteId = payload.siteId;
+      const targetSiteId = (payload.siteId || '').toString().trim();
       const rsvp: GuestRsvp = {
         id: payload.id || `rsvp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         name: (payload.name || '').trim(),
@@ -288,7 +344,9 @@ async function startServer() {
 
       const sites = readSites();
       let matchedSite = sites.find(
-        (s) => s.id === targetSiteId || s.slug.toLowerCase() === (targetSiteId || '').toLowerCase()
+        (s) =>
+          (targetSiteId && s.id === targetSiteId) ||
+          (targetSiteId && s.slug.toLowerCase() === targetSiteId.toLowerCase())
       );
 
       // If targetSiteId wasn't found or was omitted, default to the first site
@@ -301,6 +359,10 @@ async function startServer() {
         return;
       }
 
+      if (!Array.isArray(matchedSite.rsvps)) {
+        matchedSite.rsvps = [];
+      }
+
       // Add or replace the RSVP in the site's rsvps array
       const existingIndex = matchedSite.rsvps.findIndex((r) => r.id === rsvp.id);
       if (existingIndex >= 0) {
@@ -309,7 +371,7 @@ async function startServer() {
         matchedSite.rsvps.unshift(rsvp);
       }
 
-      // Write updated sites to disk
+      // Write updated sites and rsvps to disk immediately
       writeSites(sites);
 
       // Broadcast real-time SSE event to all connected devices (host, admin, other guests)
@@ -319,7 +381,9 @@ async function startServer() {
         timestamp: Date.now(),
       });
 
-      console.log(`[RSVP Saved] ${rsvp.name} (${rsvp.attending ? 'Attending' : 'Declined'}) for site ${matchedSite.id}`);
+      console.log(
+        `[RSVP Recorded] ${rsvp.name} (${rsvp.attending ? 'Attending' : 'Declined'}) on site "${matchedSite.title}" (ID: ${matchedSite.id})`
+      );
       res.json({ success: true, siteId: matchedSite.id, rsvp });
     } catch (err: any) {
       console.error('Error in POST /api/rsvps:', err);
@@ -337,8 +401,8 @@ async function startServer() {
       let deletedAny = false;
       sites.forEach((site) => {
         if (!siteId || site.id === siteId) {
-          const prevLen = site.rsvps.length;
-          site.rsvps = site.rsvps.filter((r) => r.id !== rsvpId);
+          const prevLen = (site.rsvps || []).length;
+          site.rsvps = (site.rsvps || []).filter((r) => r.id !== rsvpId);
           if (site.rsvps.length !== prevLen) {
             deletedAny = true;
           }

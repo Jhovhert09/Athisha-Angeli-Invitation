@@ -15,6 +15,7 @@ import {
   Globe,
   Printer,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 
 interface AdminRsvpDashboardModalProps {
@@ -24,6 +25,9 @@ interface AdminRsvpDashboardModalProps {
   activeSiteId: string;
   onDeleteRsvp: (siteId: string, rsvpId: string) => void;
   onClearSiteRsvps: (siteId: string) => void;
+  onRefreshRsvps?: () => void;
+  isSyncing?: boolean;
+  lastSyncTime?: Date;
 }
 
 export const AdminRsvpDashboardModal: React.FC<AdminRsvpDashboardModalProps> = ({
@@ -33,6 +37,9 @@ export const AdminRsvpDashboardModal: React.FC<AdminRsvpDashboardModalProps> = (
   activeSiteId,
   onDeleteRsvp,
   onClearSiteRsvps,
+  onRefreshRsvps,
+  isSyncing = false,
+  lastSyncTime,
 }) => {
   const [selectedSiteFilter, setSelectedSiteFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'attending' | 'declined'>('all');
@@ -157,7 +164,18 @@ export const AdminRsvpDashboardModal: React.FC<AdminRsvpDashboardModalProps> = (
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {onRefreshRsvps && (
+              <button
+                onClick={onRefreshRsvps}
+                disabled={isSyncing}
+                className="px-3 py-2 rounded-xl text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title={lastSyncTime ? `Last synced: ${lastSyncTime.toLocaleTimeString()}` : 'Sync with server database'}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-stone-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Syncing...' : 'Sync Database'}</span>
+              </button>
+            )}
             <button
               onClick={handlePrint}
               className="px-3 py-2 rounded-xl text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors flex items-center gap-1.5 cursor-pointer"
