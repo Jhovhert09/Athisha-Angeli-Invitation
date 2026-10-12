@@ -1,6 +1,15 @@
 [
   {
     "siteId": "site_liam_1",
+    "id": "rsvp_1791773504988_20sx",
+    "name": "Jhvz",
+    "attending": true,
+    "guestCount": 1,
+    "message": "",
+    "submittedAt": "Oct 12, 2026"
+  },
+  {
+    "siteId": "site_liam_1",
     "id": "rsvp_sample_1",
     "name": "Maria Santos",
     "attending": true,

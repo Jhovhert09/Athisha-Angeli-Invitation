@@ -28,14 +28,69 @@ try {
   // BroadcastChannel not available in older environments
 }
 
+const PENDING_RSVPS_KEY = 'blessed_pending_rsvps';
+
+function queuePendingRsvp(siteId: string, rsvp: GuestRsvp) {
+  try {
+    const raw = localStorage.getItem(PENDING_RSVPS_KEY);
+    const list: Array<{ siteId: string; rsvp: GuestRsvp; timestamp: number }> = raw ? JSON.parse(raw) : [];
+    const filtered = list.filter((item) => item.rsvp.id !== rsvp.id);
+    filtered.push({ siteId, rsvp, timestamp: Date.now() });
+    localStorage.setItem(PENDING_RSVPS_KEY, JSON.stringify(filtered));
+  } catch {}
+}
+
+export async function flushPendingRsvps() {
+  try {
+    const raw = localStorage.getItem(PENDING_RSVPS_KEY);
+    if (!raw) return;
+    const list: Array<{ siteId: string; rsvp: GuestRsvp }> = JSON.parse(raw);
+    if (!Array.isArray(list) || list.length === 0) return;
+
+    const remaining: typeof list = [];
+    for (const item of list) {
+      try {
+        const res = await fetch('/api/rsvps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ siteId: item.siteId, ...item.rsvp }),
+        });
+        if (!res.ok) {
+          remaining.push(item);
+        }
+      } catch {
+        remaining.push(item);
+      }
+    }
+    if (remaining.length > 0) {
+      localStorage.setItem(PENDING_RSVPS_KEY, JSON.stringify(remaining));
+    } else {
+      localStorage.removeItem(PENDING_RSVPS_KEY);
+    }
+  } catch {}
+}
+
+// Auto-flush pending RSVPs on reconnection or tab visibility
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    flushPendingRsvps();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      flushPendingRsvps();
+    }
+  });
+}
+
 /**
  * Submit or update an RSVP on the server database.
  * Returns confirmation with the saved RSVP data.
+ * Resilient against temporary server 404 or connection loss with local queue.
  */
 export async function submitRsvpToServer(
   siteId: string,
   rsvp: GuestRsvp
-): Promise<{ success: boolean; rsvp?: GuestRsvp; siteId?: string; error?: string }> {
+): Promise<{ success: boolean; rsvp?: GuestRsvp; siteId?: string; isOffline?: boolean; error?: string }> {
   try {
     const res = await fetch('/api/rsvps', {
       method: 'POST',
@@ -49,13 +104,27 @@ export async function submitRsvpToServer(
     });
 
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      return { success: false, error: errData.error || `Server responded with status ${res.status}` };
+      console.warn(`Server responded with ${res.status}. Saving locally and queuing for background sync.`);
+      queuePendingRsvp(siteId, rsvp);
+      if (channel) {
+        try {
+          channel.postMessage({
+            type: 'NEW_RSVP',
+            siteId,
+            rsvp,
+            timestamp: Date.now(),
+          });
+        } catch {}
+      }
+      return { success: true, rsvp, siteId, isOffline: true };
     }
 
     const data = await res.json();
     const confirmedRsvp: GuestRsvp = data.rsvp || rsvp;
     const confirmedSiteId: string = data.siteId || siteId;
+
+    // Auto-flush any remaining items in queue
+    flushPendingRsvps();
 
     // Immediately notify local BroadcastChannel for instant same-browser update
     if (channel) {
@@ -71,8 +140,19 @@ export async function submitRsvpToServer(
 
     return { success: true, rsvp: confirmedRsvp, siteId: confirmedSiteId };
   } catch (err: any) {
-    console.error('Network error submitting RSVP to server:', err);
-    return { success: false, error: err?.message || 'Network connection failed' };
+    console.warn('Network issue submitting RSVP. Saving locally and queuing for background sync:', err);
+    queuePendingRsvp(siteId, rsvp);
+    if (channel) {
+      try {
+        channel.postMessage({
+          type: 'NEW_RSVP',
+          siteId,
+          rsvp,
+          timestamp: Date.now(),
+        });
+      } catch {}
+    }
+    return { success: true, rsvp, siteId, isOffline: true };
   }
 }
 
