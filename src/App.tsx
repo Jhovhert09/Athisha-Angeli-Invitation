@@ -61,6 +61,36 @@ const DEFAULT_SITE_1: PublicSite = {
   rsvps: INITIAL_RSVPS,
 };
 
+// Sanitize and ensure complete data structures for all sites across all devices
+export function normalizeSite(raw: any): PublicSite {
+  const baseData = {
+    ...INITIAL_INVITATION_DATA,
+    ...(raw?.data || {}),
+    godparents: (Array.isArray(raw?.data?.godparents) && raw.data.godparents.length > 0)
+      ? raw.data.godparents
+      : INITIAL_INVITATION_DATA.godparents,
+    photos: (Array.isArray(raw?.data?.photos) && raw.data.photos.length > 0)
+      ? raw.data.photos
+      : INITIAL_INVITATION_DATA.photos,
+    timelineItems: (Array.isArray(raw?.data?.timelineItems) && raw.data.timelineItems.length > 0)
+      ? raw.data.timelineItems
+      : INITIAL_INVITATION_DATA.timelineItems,
+  };
+
+  return {
+    id: raw?.id || 'site_liam_1',
+    slug: raw?.slug || 'liam-alexander',
+    title: raw?.title || `${baseData.babyName}'s Holy Baptism & 1st Birthday`,
+    isPublished: raw?.isPublished ?? true,
+    publishedAt: raw?.publishedAt || 'Oct 5, 2026',
+    createdAt: raw?.createdAt || 'Oct 1, 2026',
+    viewCount: typeof raw?.viewCount === 'number' ? raw.viewCount : 142,
+    allowGuestRsvp: raw?.allowGuestRsvp ?? true,
+    data: baseData,
+    rsvps: Array.isArray(raw?.rsvps) ? raw.rsvps : [],
+  };
+}
+
 export default function App() {
   // All public sites managed by the admin
   const [sites, setSites] = useState<PublicSite[]>(() => {
@@ -68,7 +98,9 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY_SITES);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(normalizeSite);
+        }
       }
     } catch {
       // Fallback
@@ -104,7 +136,8 @@ export default function App() {
 
   // Determine active site for editing or viewing
   const activeSite = useMemo(() => {
-    return sites.find((s) => s.id === activeSiteId) || sites[0] || DEFAULT_SITE_1;
+    const raw = sites.find((s) => s.id === activeSiteId) || sites[0] || DEFAULT_SITE_1;
+    return normalizeSite(raw);
   }, [sites, activeSiteId]);
 
   // Determine site for guest viewing
@@ -112,9 +145,9 @@ export default function App() {
     const slugParam = currentUrlParams.get('site');
     if (slugParam) {
       const matched = sites.find((s) => s.slug === slugParam.toLowerCase().trim());
-      if (matched) return matched;
+      if (matched) return normalizeSite(matched);
     }
-    return activeSite;
+    return normalizeSite(activeSite);
   }, [sites, currentUrlParams, activeSite]);
 
   // Admin Authentication Credentials & Session
@@ -229,11 +262,11 @@ export default function App() {
             );
             const rsvps = matchingRsvps && matchingRsvps.length > 0
               ? matchingRsvps.map(({ siteId: _, ...r }) => r)
-              : sSite.rsvps;
-            return {
+              : (Array.isArray(sSite.rsvps) ? sSite.rsvps : []);
+            return normalizeSite({
               ...sSite,
               rsvps,
-            };
+            });
           });
         });
       } else if (serverRsvps && serverRsvps.length > 0) {
@@ -324,7 +357,7 @@ export default function App() {
         );
         setLastSyncTime(new Date());
       } else if (payload.type === 'SITES_UPDATED' && payload.sites) {
-        const incomingSites = payload.sites;
+        const incomingSites = payload.sites.map(normalizeSite);
         setSites((prevSites) => {
           // Merge preserving any active local changes and existing RSVPs
           const map = new Map<string, PublicSite>();
@@ -366,7 +399,7 @@ export default function App() {
         try {
           const parsed = JSON.parse(e.newValue);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setSites(parsed);
+            setSites(parsed.map(normalizeSite));
           }
         } catch {}
       }

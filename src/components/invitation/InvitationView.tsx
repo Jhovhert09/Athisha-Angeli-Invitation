@@ -31,6 +31,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { PhotoReplaceModal } from '../common/PhotoReplaceModal';
+import { INITIAL_INVITATION_DATA } from '../../utils/templates';
 
 interface InvitationViewProps {
   data: InvitationData;
@@ -43,14 +44,29 @@ interface InvitationViewProps {
 }
 
 export const InvitationView: React.FC<InvitationViewProps> = ({
-  data,
+  data: rawData,
   onResetCover,
-  guestRsvps,
+  guestRsvps = [],
   onAddRsvp,
   onReplaceBabyPhoto,
   onReplaceGalleryPhoto,
   onAddGalleryPhoto,
 }) => {
+  // Guaranteed complete fallback data to prevent undefined errors on any device
+  const data: InvitationData = {
+    ...INITIAL_INVITATION_DATA,
+    ...(rawData || {}),
+    godparents: (Array.isArray(rawData?.godparents) && rawData.godparents.length > 0)
+      ? rawData.godparents
+      : INITIAL_INVITATION_DATA.godparents,
+    photos: (Array.isArray(rawData?.photos) && rawData.photos.length > 0)
+      ? rawData.photos
+      : INITIAL_INVITATION_DATA.photos,
+    timelineItems: (Array.isArray(rawData?.timelineItems) && rawData.timelineItems.length > 0)
+      ? rawData.timelineItems
+      : INITIAL_INVITATION_DATA.timelineItems,
+  };
+
   // Audio state
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
@@ -59,7 +75,7 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
   const [attendingInitial, setAttendingInitial] = useState(true);
   const [confirmedRsvp, setConfirmedRsvp] = useState<GuestRsvp | null>(() => {
     try {
-      const saved = localStorage.getItem(`guest_rsvp_${data.babyName}`);
+      const saved = localStorage.getItem(`guest_rsvp_${data?.babyName || 'default'}`);
       if (saved) return JSON.parse(saved);
     } catch {}
     return null;
@@ -651,7 +667,7 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
 
           {/* Godparent Cards Grid */}
           <div className="grid grid-cols-2 gap-2.5">
-            {data.godparents.map((gp) => (
+            {(data.godparents || []).map((gp) => (
               <div
                 key={gp.id}
                 className="p-3.5 rounded-2xl bg-white border border-stone-200/70 shadow-xs flex flex-col justify-between transition-transform hover:scale-[1.01]"
@@ -772,7 +788,7 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {data.photos.map((photo, idx) => (
+            {(data.photos || []).map((photo, idx) => (
               <div
                 key={photo.id || idx}
                 onClick={() => setSelectedPhoto(photo)}
@@ -854,7 +870,7 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
           </div>
 
           <div className="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-stone-200">
-            {data.timelineItems.map((item) => (
+            {(data.timelineItems || []).map((item) => (
               <div key={item.id} className="relative group">
                 {/* Timeline node icon */}
                 <div
@@ -1170,7 +1186,7 @@ export const InvitationView: React.FC<InvitationViewProps> = ({
       )}
 
       {/* Photo Replacement Modal: Specific Gallery Photo */}
-      {onReplaceGalleryPhoto && replaceGalleryIndex !== null && data.photos[replaceGalleryIndex] && (
+      {onReplaceGalleryPhoto && replaceGalleryIndex !== null && data.photos && data.photos[replaceGalleryIndex] && (
         <PhotoReplaceModal
           isOpen={replaceGalleryIndex !== null}
           onClose={() => setReplaceGalleryIndex(null)}

@@ -10,6 +10,7 @@ import {
 } from '../common/DecorativeIcons';
 import { ChevronDown, Sparkles, Camera } from 'lucide-react';
 import { PhotoReplaceModal } from '../common/PhotoReplaceModal';
+import { INITIAL_INVITATION_DATA } from '../../utils/templates';
 
 interface CoverScreenProps {
   data: InvitationData;
@@ -19,11 +20,15 @@ interface CoverScreenProps {
 }
 
 export const CoverScreen: React.FC<CoverScreenProps> = ({
-  data,
+  data: rawData,
   onOpen,
   isOpen,
   onReplaceBabyPhoto,
 }) => {
+  const data: InvitationData = {
+    ...INITIAL_INVITATION_DATA,
+    ...(rawData || {}),
+  };
   const [isPhotoModalOpen, setIsPhotoModalOpen] = React.useState(false);
   const fontHeadingClass =
     data.fontHeading === 'playfair' ? 'font-playfair' : 'font-cormorant';

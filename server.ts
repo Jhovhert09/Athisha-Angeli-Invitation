@@ -52,6 +52,36 @@ const DEFAULT_SEED_SITES: PublicSite[] = [
   },
 ];
 
+// Sanitize and validate site data to ensure no missing properties or undefined arrays
+function normalizeSite(raw: any): PublicSite {
+  const baseData = {
+    ...INITIAL_INVITATION_DATA,
+    ...(raw?.data || {}),
+    godparents: (Array.isArray(raw?.data?.godparents) && raw.data.godparents.length > 0)
+      ? raw.data.godparents
+      : INITIAL_INVITATION_DATA.godparents,
+    photos: (Array.isArray(raw?.data?.photos) && raw.data.photos.length > 0)
+      ? raw.data.photos
+      : INITIAL_INVITATION_DATA.photos,
+    timelineItems: (Array.isArray(raw?.data?.timelineItems) && raw.data.timelineItems.length > 0)
+      ? raw.data.timelineItems
+      : INITIAL_INVITATION_DATA.timelineItems,
+  };
+
+  return {
+    id: raw?.id || 'site_liam_1',
+    slug: raw?.slug || 'liam-alexander',
+    title: raw?.title || `${baseData.babyName}'s Holy Baptism & 1st Birthday`,
+    isPublished: raw?.isPublished ?? true,
+    publishedAt: raw?.publishedAt || 'Oct 5, 2026',
+    createdAt: raw?.createdAt || 'Oct 1, 2026',
+    viewCount: typeof raw?.viewCount === 'number' ? raw.viewCount : 142,
+    allowGuestRsvp: raw?.allowGuestRsvp ?? true,
+    data: baseData,
+    rsvps: Array.isArray(raw?.rsvps) ? raw.rsvps : [],
+  };
+}
+
 // Ensure database files exist
 function initDatabase(): void {
   try {
@@ -66,6 +96,10 @@ function initDatabase(): void {
         const parsed = JSON.parse(content);
         if (!Array.isArray(parsed) || parsed.length === 0) {
           fs.writeFileSync(dbFile, JSON.stringify(DEFAULT_SEED_SITES, null, 2), 'utf-8');
+        } else {
+          // Normalize existing sites and ensure data is never empty
+          const normalized = parsed.map(normalizeSite);
+          fs.writeFileSync(dbFile, JSON.stringify(normalized, null, 2), 'utf-8');
         }
       } catch {
         fs.writeFileSync(dbFile, JSON.stringify(DEFAULT_SEED_SITES, null, 2), 'utf-8');
@@ -90,7 +124,7 @@ function readSites(): PublicSite[] {
       const raw = fs.readFileSync(dbFile, 'utf-8');
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map(normalizeSite);
       }
     }
   } catch (err) {
@@ -257,7 +291,7 @@ async function startServer() {
 
       const merged: PublicSite[] = sitesToSave.map((incomingSite) => {
         const existing = currentMap.get(incomingSite.id);
-        if (!existing) return incomingSite;
+        if (!existing) return normalizeSite(incomingSite);
 
         // CRITICAL: Preserve all existing RSVPs from the database!
         // Combine existing RSVPs with any new incoming RSVPs, deduplicated by rsvp.id
@@ -269,11 +303,29 @@ async function startServer() {
           }
         });
 
-        return {
+        // Merge site data safely, never wiping existing valid data with an empty object
+        const mergedData = {
+          ...INITIAL_INVITATION_DATA,
+          ...(existing.data || {}),
+          ...(incomingSite.data || {}),
+        };
+        if (!incomingSite.data?.godparents?.length && existing.data?.godparents?.length) {
+          mergedData.godparents = existing.data.godparents;
+        }
+        if (!incomingSite.data?.photos?.length && existing.data?.photos?.length) {
+          mergedData.photos = existing.data.photos;
+        }
+        if (!incomingSite.data?.timelineItems?.length && existing.data?.timelineItems?.length) {
+          mergedData.timelineItems = existing.data.timelineItems;
+        }
+
+        return normalizeSite({
+          ...existing,
           ...incomingSite,
+          data: mergedData,
           // Authoritative RSVP list from the server database
           rsvps: Array.from(rsvpMap.values()),
-        };
+        });
       });
 
       // Also preserve any other sites currently in the database that were not in incoming payload

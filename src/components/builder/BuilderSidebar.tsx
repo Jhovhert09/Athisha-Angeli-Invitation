@@ -812,7 +812,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
               </div>
 
               <div className="space-y-2">
-                {data.godparents.map((gp, idx) => (
+                {(data.godparents || []).map((gp, idx) => (
                   <div
                     key={gp.id}
                     className="p-3 bg-stone-50 rounded-xl border border-stone-200 flex items-center gap-2"
@@ -917,10 +917,10 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
               {/* List of Existing Photos with Replace Photo Button */}
               <div className="space-y-3 pt-1">
                 <span className="text-[11px] font-semibold text-stone-700 block">
-                  Current Gallery Photos ({data.photos.length})
+                  Current Gallery Photos ({(data.photos || []).length})
                 </span>
 
-                {data.photos.map((photo, idx) => (
+                {(data.photos || []).map((photo, idx) => (
                   <div
                     key={photo.id || idx}
                     className="p-3 bg-stone-50 rounded-2xl border border-stone-200 space-y-2.5 transition-all hover:border-stone-300"
@@ -930,7 +930,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                       <span className="font-bold text-stone-700">
                         Photo #{idx + 1}
                       </span>
-                      {data.photos.length > 1 && (
+                      {(data.photos || []).length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleRemoveGalleryPhoto(idx)}
@@ -999,7 +999,7 @@ export const BuilderSidebar: React.FC<BuilderSidebarProps> = ({
                 Event Timeline Schedule
               </h3>
               <div className="space-y-2">
-                {data.timelineItems.map((item, idx) => (
+                {(data.timelineItems || []).map((item, idx) => (
                   <div
                     key={item.id}
                     className="p-2.5 bg-stone-50 rounded-xl border border-stone-200 space-y-1.5"
